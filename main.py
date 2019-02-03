@@ -33,6 +33,7 @@ class WowFishingBot():
 		self.loot_window_coords = [0.17, 0.01, 0.33, 0.181] # 0:0+2, 1:1+3
 		self.loot_window = None
 		self.tries = 0
+		self.bait_window = 50 # dimension of the window that will encapsule the float
 
 
 	def throw_bait(self, fishing_hotkey):
@@ -138,10 +139,46 @@ class WowFishingBot():
 				break
 			prior_loot = curr_loot
 
+
 	def watch_loot_window(self):
 		thread = Thread(target=self._watch_loot_window)
 		thread.start()
 
+
+	def watch_bait(self, bait_coords):
+		# capturing of the float window
+		bait_window = {'top': int(bait_coords[1] - self.bait_window / 2), 'left': int(bait_coords[0] - self.bait_window / 2),
+				  'width': self.bait_window, 'height': self.bait_window}
+		bait_prior   = utils.binarize(utils.aply_kmeans_colors(np.array(self.sct.grab(bait_window))))
+
+		# list with all the differences between sampled images
+		all_diffs = []
+		avg_diff = 0
+		std_diff = 0
+		c = 0
+		print("watching float...")
+		while c < 1400:
+			float_current = utils.binarize(utils.aply_kmeans_colors(np.array(self.sct.grab(bait_window))))
+			diff = np.sum(np.multiply(float_current, bait_prior))
+
+			if c == 200:
+				avg_diff = np.mean(all_diffs)
+				std_diff = np.std(all_diffs)
+
+			if c > 200:
+				if diff < avg_diff - 3 * std_diff:
+					pyautogui.rightClick()
+					print("tried to capture fish")
+					time.sleep(0.2)
+					if self.found_lootw:
+						print("SUCCEDED CAPTURING THE FISH")
+					# loot
+					print("looting the fish...")
+					self.loot()
+					break
+			bait_prior = float_current
+			all_diffs.append(diff)
+			c += 1
 
 
 	def fish_manual(self):
@@ -152,64 +189,20 @@ class WowFishingBot():
 
 		# find fishing float in image
 		print("Throwing float...")
-		float_coords = self.look4object(frame=frame, object = cv2.imread('var/fishing_float_9.png', 0)  # trainImage
-)
+		bait_coords = self.look4object(frame=frame, object = cv2.imread('var/fishing_float_9.png', 0))
 
 		# if we cannot find the float, try again
-		print(float_coords)
-		if float_coords is None or np.any(np.isnan(float_coords)):
+		if bait_coords is None or np.any(np.isnan(bait_coords)):
 			print("Could not find float :(")
 			self.jump()
 			return
 
-		print("Found float, moving cursor to it...")
-		utils.move_mouse(float_coords.tolist())
-		old_diff = 99999
-
-		# dimension of the window that will encapsule the float
-		window_dim = 50
-		# capturing of the float window
-		window_float = {'top': int(float_coords[1] - window_dim / 2), 'left': int(float_coords[0] - window_dim / 2),
-				  'width': window_dim, 'height': window_dim}
-		float_prior   = utils.binarize(utils.aply_kmeans_colors(np.array(self.sct.grab(window_float))))
-
-
-		# number of samples to consider to measure the change rate of the image across time
-		window_length = 1
-		# list to store the change rates
-		last_diffs = list(np.zeros(window_length))
-		# list with all the differences between sampled images
-		all_diffs = []
-		avg_diff = 0
-		std_diff = 0
-		c = 0
+		print("Found the bait at {}, moving mouse to it".format(bait_coords))
+		utils.move_mouse(bait_coords.tolist())
 
 		self.watch_loot_window()
 
-		print("watching float...")
-		while c < 1400 :
-			float_current = utils.binarize(utils.aply_kmeans_colors(np.array(self.sct.grab(window_float))))
-			diff = np.sum(np.multiply(float_current, float_prior))
-
-			if c == 200:
-				avg_diff = np.mean(all_diffs)
-				std_diff = np.std(all_diffs)
-
-			if c > 200:
-				# print("c: " + str(c) + " diff: " + str(diff))
-				if 	diff < avg_diff - 3*std_diff: #and strictly_increasing(last_diffs): # and False:
-					pyautogui.rightClick()
-					print("tried to capture fish")
-					time.sleep(0.2)
-					if self.found_lootw:
-						print("SUCCEDED CAPTURING THE FISH")
-					# loot
-					print("looting the fish...")
-					self.loot()
-					break
-			float_prior = float_current
-			all_diffs.append(diff)
-			c  += 1
+		self.watch_bait(bait_coords)
 
 		self.tries += 1
 		print("Fishing try number {}".format(str(self.tries)))

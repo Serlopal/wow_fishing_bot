@@ -12,9 +12,9 @@ import time
 
 
 def make_screenshot(window):
-	print('Capturing screen')
+	# print('Capturing screen')
 	screenshot = ImageGrab.grab(bbox=window)
-	return screenshot
+	return np.array(screenshot.convert('L'))
 
 
 def kmeans_apply(image, centroids):
@@ -27,7 +27,7 @@ def kmeans_apply(image, centroids):
 	return Z.reshape((image.shape))
 
 
-def kmeans_centroids(image):
+def aply_kmeans_colors(image):
 	if len(image.shape) > 2 and image.shape[2] == 4:
 		# convert the image from RGBA2RGB
 		image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
@@ -102,3 +102,30 @@ def logout():
 def clickRight():
 	win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0)
 	win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0)
+
+def get_subwindow(window, subwindow_coords, mode):
+
+	if mode == "from_corner":
+		if all([isinstance(x, float) for x in subwindow_coords]):
+			subwindow = window[
+						  int(window.shape[0] * subwindow_coords[0]): int(window.shape[0] * subwindow_coords[0]) + int(window.shape[0] * subwindow_coords[2]),
+						  int(window.shape[1] * subwindow_coords[1]): int(window.shape[1] * subwindow_coords[1]) + int(window.shape[1] * subwindow_coords[3])]
+			return subwindow
+		else:
+			subwindow = window[
+						int(subwindow_coords[0]): int(subwindow_coords[0]) + int(subwindow_coords[2]),
+						int(subwindow_coords[1]): int(subwindow_coords[1]) + int(subwindow_coords[3])]
+			return subwindow
+	elif mode == "pos2neg":
+		if all([isinstance(x, float) for x in subwindow_coords]):
+			subwindow = window[
+						  int(window.shape[0] * subwindow_coords[0]): -int(window.shape[0] * subwindow_coords[2]),
+						  int(window.shape[1] * subwindow_coords[1]): -int(window.shape[1] * subwindow_coords[3])]
+			return subwindow
+		else:
+			subwindow = window[
+						int(subwindow_coords[0]): -int(subwindow_coords[2]),
+						int(subwindow_coords[1]): -int(subwindow_coords[3])]
+			return subwindow
+	else:
+		raise Exception("cannot clip window in mode {}. Use either from_corner or pos2neg".format(mode))

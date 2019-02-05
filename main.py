@@ -80,7 +80,7 @@ class WowFishingBot():
 		bait_location = src_pts[class_member_mask & core_samples_mask]
 
 
-		return np.mean(bait_location, axis=0) + np.array(self.window[0:2]) + np.array(self.focusw)[1::-1]
+		return np.mean(bait_location, axis=0) + np.array(self.window[0:2]) + np.array(self.focusw)[1::-1], src_pts
 
 
 	def loot(self):
@@ -182,23 +182,33 @@ class WowFishingBot():
 
 
 	def fish_manual(self):
-		print("Booting up...")
-
+		print("Throwing bait...")
 		self.throw_bait(self.fishing_hotkey)
 		frame = utils.get_subwindow(utils.make_screenshot(self.window), self.focusw, "pos2neg")
 
 		# find fishing float in image
-		print("Throwing float...")
-		bait_coords = self.look4object(frame=frame, object = cv2.imread('var/fishing_float_9.png', 0))
+		print("Trying to find bait...")
+		bait_coords, _ = self.look4object(frame=frame, object = cv2.imread('var/fishing_float_9.png', 0))
 
 		# if we cannot find the float, try again
 		if bait_coords is None or np.any(np.isnan(bait_coords)):
-			print("Could not find float :(")
+			print("Could not find bait :(")
 			self.jump()
 			return
 
-		print("Found the bait at {}, moving mouse to it".format(bait_coords))
+		# get normal cursor info
+		normal_cursor = win32gui.GetCursorInfo()
+		print("normal cursor {}".format(normal_cursor))
+		time.sleep(0.5)
+
+		print("Found bait at {}, moving mouse to it".format(bait_coords))
 		utils.move_mouse(bait_coords.tolist())
+
+		# check if the bait is really there by checking if the
+		time.sleep(0.5)
+		gear_cursor = win32gui.GetCursorInfo()
+		print("GEAR cursor {}".format(gear_cursor))
+
 
 		self.watch_loot_window()
 

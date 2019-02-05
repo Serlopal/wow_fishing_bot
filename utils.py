@@ -82,7 +82,6 @@ def check_process(wow_name):
 
 
 def move_mouse(place):
-	print("Moving cursor to " + str(place) + "...")
 	pyautogui.moveTo(place)
 
 

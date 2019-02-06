@@ -10,14 +10,15 @@ from sklearn.cluster import DBSCAN
 import win32api, win32con
 import time
 import utils
-# from tensorforce.config import Configuration
-# from tensorforce.agents import DQNAgent
+from tensorforce.agents import DQNAgent
 from matplotlib import pyplot as plt
 from threading import Thread
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
 
 
 pyautogui.PAUSE = 0.01
-
+pyautogui.FAILSAFE = False
 
 class WowFishingBot():
 	def __init__(self):
@@ -36,11 +37,63 @@ class WowFishingBot():
 		self.bait_window = 50 # dimension of the window that will encapsule the float
 
 
+
+		### RL
+		# Network is an ordered list of layers
+		network_spec = [
+			{
+				"type": "conv2d",
+				"size": 32,
+				"window": 8,
+				"stride": 4
+			},
+			{
+				"type": "conv2d",
+				"size": 64,
+				"window": 4,
+				"stride": 2
+			},
+			{
+				"type": "flatten"
+			},
+			{
+				"activation": "sigmoid",
+				"type": "dense",
+				"size": 2
+			}
+		]
+
+		# Define a state
+		states = dict(shape=(64, 64, 1), type='float')
+
+		# Define an action
+		actions = dict(shape=(1, 2), type='int', num_actions=1)
+
+		preprocessing_config = [
+			{
+				"type": "image_resize",
+				"width": 64,
+				"height": 64
+			},
+			{
+				"type": "grayscale"
+			}
+		]
+		self.agent = DQNAgent(
+			states=states,
+			actions=actions,
+			network=network_spec,
+			# states_preprocessing=preprocessing
+		)
+
+	# GOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+
+
+
+
 	def throw_bait(self, fishing_hotkey):
-		print('Throwing bait...')
 		pyautogui.hotkey(fishing_hotkey)
-		print('Bait is floating, now waiting for the fish...')
-		time.sleep(3)
+		# time.sleep(3)
 
 
 	def jump(self):
@@ -170,8 +223,8 @@ class WowFishingBot():
 					pyautogui.rightClick()
 					print("tried to capture fish")
 					time.sleep(0.2)
-					if self.found_lootw:
-						print("SUCCEDED CAPTURING THE FISH")
+					# if self.found_lootw:
+					# 	print("SUCCEDED CAPTURING THE FISH")
 					# loot
 					print("looting the fish...")
 					self.loot()
@@ -220,122 +273,38 @@ class WowFishingBot():
 		self.jump()
 
 
-	# def fish_RLL(self):
-	# 	# The agent is configured with a single configuration object
-	# 	config = Configuration(
-	# 		memory=dict(
-	# 			type='replay',
-	# 			capacity=1000
-	# 		),
-	# 		batch_size=8,
-	# 		first_update=100,
-	# 		target_sync_frequency=10
-	# 	)
-	#
-	# 	# Network is an ordered list of layers
-	# 	network_spec = [
-	# 		{
-	# 			"type": "conv2d",
-	# 			"size": 32,
-	# 			"window": 8,
-	# 			"stride": 4
-	# 		},
-	# 		{
-	# 			"type": "conv2d",
-	# 			"size": 64,
-	# 			"window": 4,
-	# 			"stride": 2
-	# 		},
-	# 		{
-	# 			"type": "flatten"
-	# 		},
-	# 		{
-	# 			"type": "dense",
-	# 			"size": 2
-	# 		}
-	# 	]
-	#
-	# 	# Define a state
-	# 	states = dict(
-	# 		image=dict(shape=(64, 64, 3), type='float')
-	# 	)
-	# 	# Define an action
-	# 	actions = dict(type='int')
-	#
-	# 	agent = DQNAgent(
-	# 		states_spec=states,
-	# 		actions_spec=actions,
-	# 		network_spec=network_spec,
-	# 		config=config
-	# 	)
-	# 	# GOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
-	#
-	# 	while True:
-	# 		print("Booting up...")
-	#
-	# 		self.throw_bait(self.fishing_hotkey)
-	# 		img = np.array(utils.make_screenshot(self.window).convert('L'))[self.focusw:-self.focusw,
-	# 			  self.focusw:-self.focusw]
-	#
-	# 		# find fishing float in image
-	# 		print("Throwing float...")
-	# 		float_coords = agent.act(states=img)
-	#
-	# 		print("Found float, moving cursor to it...") # state, reward, terminal = environment.execute(actions=action)
-	# 		utils.move_mouse(float_coords.tolist())
-	#
-	# 		#################### PART 2#####################################
-	#
-	# 		# dimension of the window that will encapsule the float
-	# 		window_dim = 50
-	# 		# capturing of the float window
-	# 		window_float = {'top': int(float_coords[1] - window_dim / 2), 'left': int(float_coords[0] - window_dim / 2),
-	# 						'width': window_dim, 'height': window_dim}
-	# 		float_prior = utils.binarize(utils.kmeans_centroids(np.array(self.sct.grab(window_float))))
-	#
-	# 		# number of samples to consider to measure the change rate of the image across time
-	# 		window_length = 1
-	# 		# list to store the change rates
-	# 		last_diffs = list(np.zeros(window_length))
-	# 		# list with all the differences between sampled images
-	# 		all_diffs = []
-	# 		avg_diff = 0
-	# 		std_diff = 0
-	# 		c = 0
-	#
-	# 		print("watching float...")
-	# 		while c < 1400:
-	# 			float_current = utils.binarize(utils.kmeans_centroids(np.array(self.sct.grab(window_float))))
-	# 			diff = np.sum(np.multiply(float_current, float_prior))
-	#
-	# 			if c == 200:
-	# 				avg_diff = np.mean(all_diffs)
-	# 				std_diff = np.std(all_diffs)
-	#
-	# 			if c > 200:
-	# 				# print("c: " + str(c) + " diff: " + str(diff))
-	# 				if diff < avg_diff - 3 * std_diff:  # and strictly_increasing(last_diffs): # and False:
-	# 					pyautogui.rightClick()
-	# 					print("tried to capture fish")
-	# 					# loot
-	# 					self.loot()
-	# 					break
-	# 			float_prior = float_current
-	# 			all_diffs.append(diff)
-	# 			c += 1
-	#
-	# 		self.tries += 1
-	# 		print("Fishing try number {}".format(str(self.tries)))
-	#
-	# 		self.jump()
-	#
-	# 		###############################################################
-	#
-	# 		reward = self.check_captured_something()
-	# 		agent.observe(reward=reward, terminal=terminal)
-	#
-	# 		timestep += 1
-	# 		episode_reward += reward
+	def fish_RL(self):
+
+		print("Booting up...")
+
+		self.throw_bait(self.fishing_hotkey)
+		frame = np.reshape(cv2.resize(utils.get_subwindow(utils.make_screenshot(self.window), self.focusw, "pos2neg"), (64, 64)), (64, 64, 1))
+		#plt.imshow(frame)
+		#plt.show()
+		# find fishing float in image
+		print("Throwing bait...")
+		action = np.squeeze(self.agent.act(frame))
+		wind0w_main_coords = [frame.shape[0] + self.focusw[0], frame.shape[1] + self.focusw[1]]
+		bait_coords = np.multiply(action, wind0w_main_coords)
+
+		# get normal cursor info
+		normal_cursor = win32gui.GetCursorInfo()[1]
+		# print("normal cursor {}".format(normal_cursor))
+		time.sleep(0.5)
+
+		print("Found bait at {}, moving mouse to it".format(bait_coords))
+		utils.move_mouse(bait_coords.tolist())
+
+		# check if the bait is really there by checking if the
+		time.sleep(0.5)
+		gear_cursor = win32gui.GetCursorInfo()[1]
+		# print("GEAR cursor {}".format(gear_cursor))
+
+		reward = 1 if normal_cursor != gear_cursor else 0
+		self.agent.observe(reward=reward, terminal=False)
+
+
+		# self.watch_bait(bait_coords)
 
 
 
@@ -359,4 +328,4 @@ if __name__ == "__main__":
 	bot = WowFishingBot()
 	bot.find_wow()
 	while True:
-		bot.fish_manual()
+		bot.fish_RL()

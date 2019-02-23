@@ -11,12 +11,6 @@ import win32api, win32con
 import time
 
 
-def make_screenshot(window):
-	# print('Capturing screen')
-	screenshot = ImageGrab.grab(bbox=window)
-	return np.array(screenshot.convert('L'))
-
-
 def kmeans_apply(image, centroids):
 	if len(image.shape) > 2 and image.shape[2] == 4:
 		# convert the image from RGBA2RGB

@@ -66,12 +66,9 @@ def get_window(window_name):
 
 
 def check_process(wow_name):
-	print('Checking WoW is running')
 	if wow_name in [psutil.Process(pid).name() for pid in psutil.pids()]:
-		print('WoW is running')
 		return True
 	else:
-		print('WoW is not running')
 		return False
 
 
@@ -95,6 +92,7 @@ def logout():
 def clickRight():
 	win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0)
 	win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0)
+
 
 def get_subwindow(window, subwindow_coords, mode):
 
@@ -122,3 +120,16 @@ def get_subwindow(window, subwindow_coords, mode):
 			return subwindow
 	else:
 		raise Exception("cannot clip window in mode {}. Use either from_corner or pos2neg".format(mode))
+
+
+def find_highest_density(points, window_dim):
+	scores = []
+	for p in points:
+		score = 0
+		for o in points:
+			dist = np.sqrt((p[0] - o[0]) ** 2 + (p[1] - o[1]) ** 2)
+			if dist < window_dim:
+				score += np.e ** (-dist)
+		scores.append(score)
+	return points[np.argmax(scores)]
+

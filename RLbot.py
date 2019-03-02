@@ -10,86 +10,61 @@ from sklearn.cluster import DBSCAN
 import win32api, win32con
 import time
 import utils
-from tensorforce.agents import DQNAgent
+# from tensorforce.agents import DQNAgent
 from matplotlib import pyplot as plt
 from threading import Thread
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
+from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QMainWindow
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
 
 pyautogui.PAUSE = 0.01
 pyautogui.FAILSAFE = False
 
-class WowFishingBot():
-	def __init__(self):
-		print("setting up bot...")
-		self.program_name = 'WoW.exe' # name of the process that runs WoW
-		self.window_name = 'World of Warcraft' # name of the WoW window in the taskbar
-		self.fishing_hotkey = '8' # hotkey assigned in the game to the action of fishing
-		self.focusw = [50, 100, 200, 200] # 0:-2, 1:-3 number of pixels removed from the outer of the image where we know the bait wont be
-		self.sct = mss() # mss class instance to capture the screen at high frequencies
-		self.loot_coords = [0.053, 0.28] # relative coordinates of the location in the screen of the loot window
-		self.loot_coords_delta = 0.03 # vertical movement between different objects in the loot window
 
-		self.loot_window_coords = [0.17, 0.01, 0.33, 0.181] # 0:0+2, 1:1+3
+class WowFishingBotUI():
+	def __init__(self):
+		self.program_name = 'WoW.exe'  # name of the process that runs WoW
+		self.window_name = 'World of Warcraft'  # name of the WoW window in the taskbar
+		self.fishing_hotkey = '8'  # hotkey assigned in the game to the action of fishing
+		self.focusw = [50, 100, 200,
+					   200]  # 0:-2, 1:-3 number of pixels removed from the outer of the image where we know the bait wont be
+		self.loot_coords = [0.053, 0.28]  # relative coordinates of the location in the screen of the loot window
+		self.loot_coords_delta = 0.03  # vertical movement between different objects in the loot window
+
+		self.loot_window_coords = [0.17, 0.01, 0.33, 0.181]  # 0:0+2, 1:1+3
 		self.loot_window = None
 		self.tries = 0
-		self.bait_window = 50 # dimension of the window that will encapsule the float
-		### RL
-		# Network is an ordered list of layers
-		network_spec = [
-			{
-				"type": "conv2d",
-				"size": 32,
-				"window": 8,
-				"stride": 4
-			},
-			{
-				"type": "conv2d",
-				"size": 64,
-				"window": 4,
-				"stride": 2
-			},
-			{
-				"type": "flatten"
-			},
-			{
-				"activation": "sigmoid",
-				"type": "dense",
-				"size": 2
-			}
-		]
-		# Define a state
-		states = dict(shape=(64, 64, 1), type='float')
-		# Define an action
-		actions = dict(shape=(1, 2), type='int', num_actions=1)
+		self.bait_window = 50  # dimension of the window that will encapsule the float
 
-		update_mode = dict(
-			unit='timesteps',
-			batch_size=1,
-			frequency=4
-		)
+		self.app = QApplication(["WowFishingBotUI"])
+		self.window = QWidget()
+
+		self.bot = WowFishingBot()
+
+		layout = QGridLayout()
+		layout.setColumnStretch(1, 4)
+		layout.setColumnStretch(2, 4)
+		layout.addWidget(QPushButton('1'), 0, 0)
+		layout.addWidget(QPushButton('2'), 0, 1)
+		layout.addWidget(QPushButton('3'), 0, 2)
+		layout.addWidget(QPushButton('4'), 1, 0)
+		layout.addWidget(QPushButton('5'), 1, 1)
+		layout.addWidget(QPushButton('6'), 1, 2)
+		layout.addWidget(QPushButton('7'), 2, 0)
+		layout.addWidget(QPushButton('8'), 2, 1)
+
+		self.window.setLayout(layout)
+		self.window.show()
 
 
-		preprocessing = [
-			{
-				"type": "image_resize",
-				"width": 64,
-				"height": 64
-			},
-			{
-				"type": "normalize"
-			}
-		]
-		self.agent = DQNAgent(
-			states=states,
-			actions=actions,
-			network=network_spec,
-			states_preprocessing = preprocessing,
-			update_mode=update_mode
-		)
+class WowFishingBot():
 
-	# GOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+	def __init__(self):
+		print("setting up bot...")
+		self.UI = self.WowFishingBotUI()
+		# mss class instance to capture the screen at high frequencies
+		self.sct = mss()
 
 	def make_screenshot(self, window):
 		return cv2.cvtColor(np.array(self.sct.grab(self.window)), cv2.COLOR_RGB2GRAY)
@@ -237,7 +212,7 @@ class WowFishingBot():
 			c += 1
 
 
-	def fish_manual(self):
+	def fish(self):
 		print("Throwing bait...")
 		self.throw_bait(self.fishing_hotkey)
 		frame = utils.get_subwindow(self.make_screenshot(self.window), self.focusw, "pos2neg")
@@ -305,9 +280,6 @@ class WowFishingBot():
 
 		reward = 1 if normal_cursor != gear_cursor else 0
 		self.agent.observe(reward=reward, terminal=False)
-
-
-		# self.watch_bait(bait_coords)
 
 
 
@@ -526,20 +498,8 @@ class WowFishingBotRL():
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 if __name__ == "__main__":
-
 	bot = WowFishingBot()
 	bot.find_wow()
 	while True:
-		bot.fish_RL()
+		bot.fish()

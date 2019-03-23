@@ -50,7 +50,7 @@ class QSignalViewer(pg.PlotWidget):
 			self.addItem(c)
 			self.curves.append(c)
 
-		self.autoRange(padding = 0.05)
+		#self.autoRange(padding = 0.05)
 
 	def update(self, data):
 		# update buffer
@@ -74,6 +74,7 @@ class QLogger(QTextEdit):
 
 
 class WowFishingBotUI():
+
 	def __init__(self):
 		self.program_name = 'WoW.exe'  # name of the process that runs WoW
 		self.window_name = 'World of Warcraft'  # name of the WoW window in the taskbar
@@ -95,6 +96,7 @@ class WowFishingBotUI():
 
 		self.start_UI()
 
+
 	def create_UI(self):
 		self.app = QApplication(["WowFishingBotUI"])
 		self.window = QWidget()
@@ -110,12 +112,15 @@ class WowFishingBotUI():
 		# register flag callback to let the backend know the UI has died
 		self.app.aboutToQuit.connect(self.notify_dead_UI)
 
+
 	def notify_dead_UI(self):
 		self.bot.dead_UI = True
+
 
 	def start_UI(self):
 		self.window.show()
 		self.app.exec_()
+
 
 	def _start_bot(self):
 		self.bot.find_wow()
@@ -126,6 +131,7 @@ class WowFishingBotUI():
 
 		while True:
 			self.bot.fish_grid()
+
 
 	def start_bot(self):
 		thread = Thread(target=self._start_bot)
@@ -139,6 +145,8 @@ class WowFishingBot():
 		self.UI = UI
 		self.dead_UI = False
 		self.before_cursor = True
+		self.gridFraction_horizontal = [0.3, 0.7]
+		self.gridFraction_vertical = [0.1, 0.4]
 
 
 	def make_screenshot(self, window):
@@ -159,12 +167,12 @@ class WowFishingBot():
 	def loot(self):
 		nitems = 3
 		for i in range(nitems):
-			time.sleep(1)
+			time.sleep(0.5)
 			pyautogui.moveTo(x=self.window[0] + (self.window[2] - self.window[0]) * self.UI.loot_coords[0],
 							 y=self.window[1] + (self.window[3] - self.window[1]) * (self.UI.loot_coords[1] + i * self.UI.loot_coords_delta),
-							 duration=1)
-			pyautogui.moveRel(4, 0, duration=0.2)
-			pyautogui.moveRel(-4, 0, duration=0.2)
+							 duration=0.5)
+			pyautogui.moveRel(4, 0, duration=0.05)
+			pyautogui.moveRel(-4, 0, duration=0.05)
 			pyautogui.click()
 
 
@@ -181,43 +189,6 @@ class WowFishingBot():
 			sys.exit()
 
 
-	def check_captured_something(self):
-		img = self.make_screenshot(self.window)
-		loot_window = utils.get_subwindow(img, self.UI.loot_window_coords, "from_corner")
-		plt.imshow(loot_window)
-		plt.show()
-
-
-	def _watch_loot_window(self):
-		# reset trigger flag
-		self.found_lootw = False
-		# get samples
-		samples = []
-		sct = mss()
-
-		for _ in range(30):
-			img = cv2.cvtColor(np.array(sct.grab(self.window)), cv2.COLOR_RGB2GRAY)
-			samples.append(utils.get_subwindow(img, self.UI.loot_window_coords, "from_corner"))
-			time.sleep(0.1)
-		avg_diff = np.mean([np.sum(np.abs(np.subtract(samples[i], samples[i+1]))) for i in range(len(samples)-1)])
-		std_diff = np.std([np.sum(np.abs(np.subtract(samples[i], samples[i+1]))) for i in range(len(samples)-1)])
-		# now watch for loot window popping up
-		prior_loot = samples[-1]
-		while True:
-			img = img = cv2.cvtColor(np.array(sct.grab(self.window)), cv2.COLOR_RGB2GRAY)
-			curr_loot = utils.get_subwindow(img, self.UI.loot_window_coords, "from_corner")
-			diff = np.sum(np.abs(np.subtract(curr_loot, prior_loot)))
-			if diff > avg_diff + 3 * std_diff:
-				self.found_lootw = True
-				break
-			prior_loot = curr_loot
-
-
-	def watch_loot_window(self):
-		thread = Thread(target=self._watch_loot_window)
-		thread.start()
-
-
 	def watch_bait(self, bait_coords):
 		# capturing of the float window
 		bait_window = {'top': int(bait_coords[1] - self.UI.bait_window / 2), 'left': int(bait_coords[0] - self.UI.bait_window / 2),
@@ -228,7 +199,7 @@ class WowFishingBot():
 		all_diffs = []
 		avg_diff = 0
 		std_diff = 0
-		c = 0
+		done_getting_stats = False
 		self.UI.log_viewer.emitter.emit("watching float...")
 		t = time.time()
 		while time.time() - t < 30: # fishing process takes 30 secs
@@ -236,11 +207,12 @@ class WowFishingBot():
 			diff = np.sum(np.multiply(float_current, bait_prior))
 			# emit difference to signal viewer
 			self.UI.signal_viewer.emitter.emit(diff)
-			if c == 200:
+			if time.time() - t > 4 and not done_getting_stats:
 				avg_diff = np.mean(all_diffs)
 				std_diff = np.std(all_diffs)
+				done_getting_stats = True
 
-			if c > 200:
+			if time.time() - t > 4:
 				if diff < avg_diff - 3 * std_diff:
 					pyautogui.rightClick()
 					self.UI.log_viewer.emitter.emit("tried to capture fish")
@@ -250,7 +222,6 @@ class WowFishingBot():
 					break
 			bait_prior = float_current
 			all_diffs.append(diff)
-			c += 1
 
 
 	def fish_grid(self):
@@ -264,26 +235,26 @@ class WowFishingBot():
 		grid_step = 20
 		found = False
 		bait_coords = None
-		for j in range(int(self.window[1] + self.window[3] * 0.1), int(self.window[1] + self.window[3] * 0.4), grid_step):
+		for j in range(int(self.window[1] + self.window[3] * self.gridFraction_vertical[0]), int(self.window[1] + self.window[3] * self.gridFraction_vertical[1]), grid_step):
 			if found:
 				break
-			for i in range(int(self.window[0] + self.window[2]*0.3) , int(self.window[0] + self.window[2]*0.7), grid_step):
+			for i in range(int(self.window[0] + self.window[2] * self.gridFraction_horizontal[0]) , int(self.window[0] + self.window[2] * self.gridFraction_horizontal[1]), grid_step):
 				precursor = win32gui.GetCursorInfo()[1]
 				utils.move_mouse([i, j])
-				time.sleep(0.1)
+				time.sleep(0.01)
 				postcursor = win32gui.GetCursorInfo()[1]
 				if precursor != postcursor:
 					found = True
-					self.UI.log_viewer.emitter.emit("DIFFERENT CURSOR!")
+					self.UI.log_viewer.emitter.emit("Found bait at coordinates {0} , {1}".format(i,j))
 					bait_coords = [i, j]
 					break
 		if bait_coords is not None:
-			self.watch_loot_window()
 			self.watch_bait(bait_coords)
 			self.UI.tries += 1
 			self.UI.log_viewer.emitter.emit("Fishing try number {}".format(str(self.UI.tries)))
 
 		self.jump()
+
 
 if __name__ == "__main__":
 	botUI = WowFishingBotUI()

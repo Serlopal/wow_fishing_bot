@@ -21,7 +21,7 @@ def kmeans_apply(image, centroids):
 	return Z.reshape((image.shape))
 
 
-def aply_kmeans_colors(image):
+def apply_kmeans_colors(image):
 	if len(image.shape) > 2 and image.shape[2] == 4:
 		# convert the image from RGBA2RGB
 		image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
@@ -129,7 +129,7 @@ def find_highest_density(points, window_dim):
 		for o in points:
 			dist = np.sqrt((p[0] - o[0]) ** 2 + (p[1] - o[1]) ** 2)
 			if dist < window_dim:
-				score += np.e ** (-dist)
+				score += np.e ** (dist)
 		scores.append(score)
 	return points[np.argmax(scores)]
 

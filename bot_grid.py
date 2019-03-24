@@ -1,31 +1,19 @@
 import cv2
-import pyscreenshot as ImageGrab
 import pyautogui
 import numpy as np
-import psutil
 import win32gui
 import sys
 from mss import mss
-import mss.tools as msstools
-
-from sklearn.cluster import DBSCAN
-import win32api, win32con
 import time
 import utils
-# from tensorforce.agents import DQNAgent
-from matplotlib import pyplot as plt
 from threading import Thread
 import os
-from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QMainWindow,\
-	QGraphicsView, QGraphicsScene, QVBoxLayout, QHBoxLayout, QTextEdit
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-import PyQt5.QtCore as QtCore
+from PyQt5.QtWidgets import QApplication, QGridLayout, QTextEdit, QMainWindow, QGroupBox, QAction, QDialog, QListWidget, \
+QSizePolicy, QHBoxLayout, QLabel, QLineEdit, QPushButton
+from PyQt5.QtCore import pyqtSignal
 import pyqtgraph as pg
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
-
 pyautogui.PAUSE = 0.01
 pyautogui.FAILSAFE = False
 
@@ -78,36 +66,130 @@ class WowFishingBotUI():
 	def __init__(self):
 		self.program_name = 'WoW.exe'  # name of the process that runs WoW
 		self.window_name = 'World of Warcraft'  # name of the WoW window in the taskbar
-		self.fishing_hotkey = '8'  # hotkey assigned in the game to the action of fishing
-		self.focusw = [50, 100, 200, 200]  # 0:-2, 1:-3 number of pixels removed from the outer of the image where we know the bait wont be
-		self.loot_coords = [0.053, 0.28]  # relative coordinates of the location in the screen of the loot window
-		self.loot_coords_delta = 0.03  # vertical movement between different objects in the loot window
-
-		self.loot_window_coords = [0.17, 0.01, 0.33, 0.181]  # 0:0+2, 1:1+3
-		self.loot_window = None
-		self.tries = 0
-		self.bait_window = 50  # dimension of the window that will encapsule the float
-
+		self.startStop_fishing_flag = False
 		self.create_UI()
 
 		self.bot = WowFishingBot(self)
-		self.bot.find_wow()
+		self.create_menu()
+
 		self.start_bot()
 
 		self.start_UI()
 
 
+	def create_menu(self):
+		menubar = self.window.menuBar()
+		fileMenu = menubar.addMenu('&File')
+		exitAct = QAction("change parameters", self.window)
+		exitAct.triggered.connect(self.show_reconfiguration_dialog)
+		fileMenu.addAction(exitAct)
+
+		self.startStop_fishing_action = QAction("Start Fishing", self.window)
+		self.startStop_fishing_action.triggered.connect(self.startStop_fishing)
+		fileMenu.addAction(self.startStop_fishing_action)
+
+
+	def startStop_fishing(self):
+		self.startStop_fishing_flag = False if self.startStop_fishing_flag else True
+		self.startStop_fishing_action.setText("Stop fishing" if self.startStop_fishing_flag else "Start fishing")
+
+
+	def show_reconfiguration_dialog(self):
+		self.reconfiguration_dialog = QDialog()
+		layout = QGridLayout()
+		self.parameters = QListWidget()
+		self.parameters.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+		self.parameters.itemClicked.connect(self.display_parameter_info)
+
+		self.parameters_dict = {
+
+			"program_name":
+				"Name of the process that is running wow. Needed to check the game is running.",
+
+			"window_name":
+				"Name of the Windows program window the game is running in. Needed to capture the screen it covers properly.",
+
+			"gridFraction_horizontal":
+				"Start and stop fraction of the horizontal length of the game's window in which the bait will be searched for",
+
+			"gridFraction_vertical":
+				"Start and stop fraction of the vertical length of the game's window in which the bait will be searched for",
+
+			"fishing_hotkey":
+				"Binding to the key action inside Wow",
+
+			"loot_coords":
+				"relative coordinates of the location in the screen of the loot window",
+
+			"loot_coords_delta":
+				"relative vertical distance between different possible objects inside the loot window",
+
+			"bait_window":
+				"Relative dimension of the square window where the bait is located, that will be watched to detect the fish at the right time",
+		}
+		for p in self.parameters_dict.keys():
+			self.parameters.addItem(p)
+		layout.addWidget(self.parameters, 0,0,10,5)
+
+		# create textbox with description of parameter
+		self.parametersInfo_label = QLabel(""" Click a command to show its info """)
+		self.parametersInfo_label.setWordWrap(True)
+		layout.addWidget(self.parametersInfo_label, 0,5,8,5)
+
+		# create text box for the value
+		self.parametersValue_label = QLineEdit(" Click a parameter to show its current value ")
+		layout.addWidget(self.parametersValue_label, 8,5,2,3)
+
+		# create save button
+		save_parameter_button = QPushButton("Save")
+		save_parameter_button.clicked.connect(self.save_parameter)
+		layout.addWidget(save_parameter_button, 8, 8, 2, 3 )
+
+		self.reconfiguration_dialog.setLayout(layout)
+		self.reconfiguration_dialog.show()
+
+
+	def save_parameter(self):
+		param = self.parameters.currentItem().text()
+		if hasattr(self, param):
+			setattr(self, param, self.parametersValue_label.text())
+		else:
+			if isinstance(getattr(self.bot, param), str):
+				setattr(self, param, self.parametersValue_label.text())
+			elif isinstance(getattr(self.bot, param), list):
+				setattr(self, param, map(float, self.parametersValue_label.text().split(" ")))
+			elif isinstance(getattr(self.bot, param), float):
+				setattr(self, param, float(self.parametersValue_label.text()))
+			else:
+				raise Exception("parameter tye unknown")
+
+
+	def display_parameter_info(self, parameter):
+		if hasattr(self, parameter.text()):
+			param_value = getattr(self, parameter.text())
+		else:
+			param_value = getattr(self.bot, parameter.text())
+			if isinstance(param_value, list):
+				param_value = " ".join(map(str, param_value))
+
+		param_info = self.parameters_dict[parameter.text()]
+		self.parametersInfo_label.setText(param_info)
+		self.parametersValue_label.setText(str(param_value))
+
+
 	def create_UI(self):
 		self.app = QApplication(["WowFishingBotUI"])
-		self.window = QWidget()
+		self.window = QMainWindow()
 		self.window.setGeometry(1100, 50, 800, 900 )
 		self.signal_viewer = QSignalViewer(num_signals=1)
 		self.log_viewer = QLogger()
+
+		centralWidget = QGroupBox()
 		layout = QGridLayout()
 		layout.addWidget(self.signal_viewer, 0, 0, 10, 10)
 		layout.addWidget(self.log_viewer, 10, 0, 10, 10)
-
-		self.window.setLayout(layout)
+		centralWidget.setLayout(layout)
+		self.window.setCentralWidget(centralWidget)
 
 		# register flag callback to let the backend know the UI has died
 		self.app.aboutToQuit.connect(self.notify_dead_UI)
@@ -124,13 +206,18 @@ class WowFishingBotUI():
 
 	def _start_bot(self):
 		self.bot.find_wow()
-		self.log_viewer.emitter.emit("giving the user time to set UI")
-		for i in reversed(range(15)):
-			time.sleep(1)
-			self.log_viewer.emitter.emit("{}".format(i))
-
+		first = True
 		while True:
-			self.bot.fish_grid()
+			if self.startStop_fishing_flag:
+				if first:
+					self.log_viewer.emitter.emit("giving the user time to switch to WoW...")
+					for i in reversed(range(10)):
+						time.sleep(1)
+						self.log_viewer.emitter.emit("{}".format(i))
+					first = False
+				self.bot.fish_grid()
+			else:
+				first = True
 
 
 	def start_bot(self):
@@ -144,18 +231,22 @@ class WowFishingBot():
 		self.sct = mss()
 		self.UI = UI
 		self.dead_UI = False
-		self.before_cursor = True
 		self.gridFraction_horizontal = [0.3, 0.7]
 		self.gridFraction_vertical = [0.1, 0.4]
+		self.fishing_hotkey = '8'  # hotkey assigned in the game to the action of fishing
 
+		self.loot_coords = [0.053, 0.28]  # relative coordinates of the location in the screen of the loot window
+		self.loot_coords_delta = 0.03  # vertical movement between different objects in the loot window
 
-	def make_screenshot(self, window):
-		color_frame = self.color_frame = self.sct.grab(self.window)
+		self.tries = 0
+
+	def make_screenshot(self):
+		color_frame = self.color_frame = self.sct.grab(self.frame)
 		return cv2.cvtColor(np.array(color_frame), cv2.COLOR_RGB2GRAY)
 
 
-	def throw_bait(self, fishing_hotkey):
-		pyautogui.hotkey(fishing_hotkey)
+	def throw_bait(self):
+		pyautogui.hotkey(self.fishing_hotkey)
 
 
 	def jump(self):
@@ -168,8 +259,8 @@ class WowFishingBot():
 		nitems = 3
 		for i in range(nitems):
 			time.sleep(0.5)
-			pyautogui.moveTo(x=self.window[0] + (self.window[2] - self.window[0]) * self.UI.loot_coords[0],
-							 y=self.window[1] + (self.window[3] - self.window[1]) * (self.UI.loot_coords[1] + i * self.UI.loot_coords_delta),
+			pyautogui.moveTo(x=self.frame[0] + (self.frame[2] - self.frame[0]) * self.loot_coords[0],
+							 y=self.frame[1] + (self.frame[3] - self.frame[1]) * (self.loot_coords[1] + i * self.loot_coords_delta),
 							 duration=0.5)
 			pyautogui.moveRel(4, 0, duration=0.05)
 			pyautogui.moveRel(-4, 0, duration=0.05)
@@ -179,20 +270,18 @@ class WowFishingBot():
 	def find_wow(self):
 		# check Wow is running
 		if utils.check_process(self.UI.program_name):
-			self.window = utils.get_window(self.UI.window_name)
-			self.UI.log_viewer.emitter.emit("Wow window at " + str(self.window))
-			self.UI.log_viewer.emitter.emit("Waiting 2 seconds, so you can switch to WoW")
-			time.sleep(2)
-			self.jump()
+			self.frame = utils.get_window(self.UI.window_name)
+			self.UI.log_viewer.emitter.emit("Wow window at " + str(self.frame))
+			self.bait_window = int(self.frame[3]/20)  # dimension of the window that will encapsulate the bait
 		else:
-			self.UI.log_viewer.emitter.emit("Wow not found running, exiting...")
+			self.UI.log_viewer.emitter.emit("Wow not found running")
 			sys.exit()
 
 
 	def watch_bait(self, bait_coords):
 		# capturing of the float window
-		bait_window = {'top': int(bait_coords[1] - self.UI.bait_window / 2), 'left': int(bait_coords[0] - self.UI.bait_window / 2),
-				  'width': self.UI.bait_window, 'height': self.UI.bait_window}
+		bait_window = {'top': int(bait_coords[1] - self.bait_window / 2), 'left': int(bait_coords[0] - self.bait_window / 2),
+				  'width': self.bait_window, 'height': self.bait_window}
 		bait_prior   = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
 
 		# list with all the differences between sampled images
@@ -228,20 +317,19 @@ class WowFishingBot():
 		if self.dead_UI:
 			exit()
 		self.UI.log_viewer.emitter.emit("Throwing bait...")
-		self.throw_bait(self.UI.fishing_hotkey)
+		self.throw_bait()
 		time.sleep(3)
-		_ = self.make_screenshot(self.window)
 
 		grid_step = 20
 		found = False
 		bait_coords = None
-		for j in range(int(self.window[1] + self.window[3] * self.gridFraction_vertical[0]), int(self.window[1] + self.window[3] * self.gridFraction_vertical[1]), grid_step):
+		for j in range(int(self.frame[1] + self.frame[3] * self.gridFraction_vertical[0]), int(self.frame[1] + self.frame[3] * self.gridFraction_vertical[1]), grid_step):
 			if found:
 				break
-			for i in range(int(self.window[0] + self.window[2] * self.gridFraction_horizontal[0]) , int(self.window[0] + self.window[2] * self.gridFraction_horizontal[1]), grid_step):
+			for i in range(int(self.frame[0] + self.frame[2] * self.gridFraction_horizontal[0]) , int(self.frame[0] + self.frame[2] * self.gridFraction_horizontal[1]), grid_step):
 				precursor = win32gui.GetCursorInfo()[1]
 				utils.move_mouse([i, j])
-				time.sleep(0.01)
+				time.sleep(0.02)
 				postcursor = win32gui.GetCursorInfo()[1]
 				if precursor != postcursor:
 					found = True
@@ -250,8 +338,8 @@ class WowFishingBot():
 					break
 		if bait_coords is not None:
 			self.watch_bait(bait_coords)
-			self.UI.tries += 1
-			self.UI.log_viewer.emitter.emit("Fishing try number {}".format(str(self.UI.tries)))
+			self.tries += 1
+			self.UI.log_viewer.emitter.emit("Fishing try number {}".format(str(self.tries)))
 
 		self.jump()
 

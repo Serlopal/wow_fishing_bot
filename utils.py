@@ -1,12 +1,8 @@
 import cv2
-import pyscreenshot as ImageGrab
 import pyautogui
 import numpy as np
 import psutil
 import win32gui
-import sys
-from mss import mss
-from sklearn.cluster import DBSCAN
 import win32api, win32con
 import time
 

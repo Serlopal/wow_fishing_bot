@@ -58,6 +58,7 @@ class WowFishingBotUI:
 		self.auto_fish_toggle = None
 		self.find_wow_button = None
 		self.fish_button = None
+		self.fish_key_edit = None
 
 		self.create_ui()
 
@@ -88,15 +89,19 @@ class WowFishingBotUI:
 		self.find_wow_button.clicked.connect(self.find_wow)
 		layout.addWidget(self.find_wow_button, 0, 2, 1, 1)
 
+		# fishing key
+		self.fish_key_edit = LabeledLineEdit("Fishing key:", "0")
+		layout.addWidget(self.fish_key_edit, 2, 0, 1, 1)
+
 		# toggle for loop fishing
 		self.auto_fish_toggle = QCheckBox("Auto pilot")
-		layout.addWidget(self.auto_fish_toggle, 1, 0, 1, 1)
+		layout.addWidget(self.auto_fish_toggle, 3, 0, 1, 1)
 
 		# Fish! button
 		self.fish_button = QPushButton("Fish")
 		self.fish_button.clicked.connect(self._fish)
 		self.fish_button.setEnabled(False)
-		layout.addWidget(self.fish_button, 1, 1, 1, 2)
+		layout.addWidget(self.fish_button, 3, 1, 1, 2)
 
 		# LOG FROM BOT ACTIVITY
 		self.log_viewer = Log()
@@ -114,7 +119,7 @@ class WowFishingBotUI:
 	def _fish(self):
 		while True:
 			self.bot.fish_grid()
-			if not self.auto_fish_toggle:
+			if not self.auto_fish_toggle.isChecked():
 				break
 
 	def start_bot(self):
@@ -137,7 +142,6 @@ class WowFishingBotUI:
 			self.fish_button.setEnabled(False)
 			self.find_wow_button.setStyleSheet("")
 
-
 	def kill_bot(self):
 		self.bot.dead_UI = True
 
@@ -150,7 +154,6 @@ class WowFishingBot:
 		self.dead_UI = False
 		self.gridFraction_horizontal = [0.3, 0.7]
 		self.gridFraction_vertical = [0.1, 0.4]
-		self.fishing_hotkey = '8'  # hotkey assigned in the game to the action of fishing
 		self.frame = None
 		self.bait_window = None
 
@@ -164,7 +167,7 @@ class WowFishingBot:
 		return cv2.cvtColor(np.array(color_frame), cv2.COLOR_RGB2GRAY)
 
 	def throw_bait(self):
-		pyautogui.hotkey(self.fishing_hotkey)
+		pyautogui.hotkey(self.UI.fish_key_edit.edit.text())
 
 	def jump(self):
 		self.UI.log_viewer.emitter.emit('Jump!')
@@ -182,20 +185,11 @@ class WowFishingBot:
 			pyautogui.moveRel(-4, 0, duration=0.05)
 			pyautogui.click()
 
-	def find_wow(self):
-		# check Wow is running
-		if utils.check_process(self.UI.game_process_name.text()):
-			self.frame = utils.get_window(self.UI.window_name)
-			self.UI.log_viewer.emitter.emit("Wow window at " + str(self.frame))
-			self.bait_window = int(self.frame[3]/20)  # dimension of the window that will encapsulate the bait
-		else:
-			self.UI.log_viewer.emitter.emit("Wow not found running")
-
 	def watch_bait(self, bait_coords):
 		# capturing of the float window
 		bait_window = {'top': int(bait_coords[1] - self.bait_window / 2), 'left': int(bait_coords[0] - self.bait_window / 2),
 				  'width': self.bait_window, 'height': self.bait_window}
-		bait_prior   = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
+		bait_prior = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
 
 		# list with all the differences between sampled images
 		all_diffs = []
@@ -207,8 +201,6 @@ class WowFishingBot:
 		while time.time() - t < 30: # fishing process takes 30 secs
 			float_current = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
 			diff = np.sum(np.multiply(float_current, bait_prior))
-			# emit difference to signal viewer
-			self.UI.signal_viewer.emitter.emit(diff)
 			if time.time() - t > 4 and not done_getting_stats:
 				avg_diff = np.mean(all_diffs)
 				std_diff = np.std(all_diffs)

@@ -58,7 +58,10 @@ def distance(p1, p2):
 
 
 def get_window(window_name):
-	return win32gui.GetWindowRect(win32gui.FindWindow(None, window_name))
+	try:
+		return win32gui.GetWindowRect(win32gui.FindWindow(None, window_name))
+	except:
+		return False
 
 
 def check_process(wow_name):

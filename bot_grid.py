@@ -134,6 +134,12 @@ class WowFishingBotUI:
 		self.app.exec_()
 
 	def _fish(self):
+		while True:
+			self.bot.fish_grid()
+			if not self.auto_fish_toggle.isChecked():
+				break
+
+	def start_fishing(self):
 		# activate warning on how to stop fishing
 		self.stop_fishing_label.setVisible(True)
 		self.stop_fishing_label.repaint()
@@ -145,24 +151,22 @@ class WowFishingBotUI:
 			self.log_viewer.emitter.emit("Fishing will start in {} ...".format(i))
 			self.log_viewer.repaint()
 
-		while True:
-			self.bot.fish_grid()
-			if not self.auto_fish_toggle.isChecked():
-				break
-
-		# remove warning on how to sto fishing
-		self.stop_fishing_label.setVisible(False)
-		self.stop_fishing_label.repaint()
-
-	def start_fishing(self):
+		# launch fishing thread in parallel
 		self.fishing_thread = QThread()
 		self.fishing_thread.run = self._fish
 		self.fishing_thread.start()
 
+		# watch if the user jumps to stop fishing
 		while True:
 			time.sleep(0.001)
 			if keyboard.is_pressed(" "):
+				# kill fishing thread
 				self.fishing_thread.terminate()
+				# remove warning on how to sto fishing
+				self.stop_fishing_label.setVisible(False)
+				self.stop_fishing_label.repaint()
+
+				return
 
 	def find_wow(self):
 

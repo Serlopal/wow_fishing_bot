@@ -53,12 +53,13 @@ class LabeledLineEdit(QGroupBox):
 
 
 class DynamicLabel(QLabel):
-	emitter = pyqtSignal(str)
+	text_emitter = pyqtSignal(str)
 	visibility_emitter = pyqtSignal(bool)
 
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
-		self.emitter.connect(lambda t: self.update_text(t))
+		self.text_emitter.connect(lambda t: self.update_text(t))
+		self.visibility_emitter.connect(lambda v: self.set_visibility(v))
 
 	def update_text(self, text):
 		self.setText(text)
@@ -68,6 +69,8 @@ class DynamicLabel(QLabel):
 		self.setVisible(v)
 		self.repaint()
 
+
+# ----------------------------------------
 
 class WowFishingBotUI:
 
@@ -88,6 +91,9 @@ class WowFishingBotUI:
 		self.stop_fishing_label = None
 		self.fishing_thread = None
 		self.tries_count_label = None
+		self.loot_coords_edit = None
+		self.loot_delta_edit = None
+
 
 		self.create_ui()
 
@@ -126,29 +132,37 @@ class WowFishingBotUI:
 		self.fishing_wait_time_edit = LabeledLineEdit("Waiting time before starting to fish", "4")
 		layout.addWidget(self.fishing_wait_time_edit, 2, 1, 1, 2)
 
+		# looting coordinates
+		self.loot_coords_edit = LabeledLineEdit("Relative looting coords from to left corner", "0.050 0.29")
+		layout.addWidget(self.loot_coords_edit, 3, 0, 1, 1)
+
+		# looting delta
+		self.loot_delta_edit = LabeledLineEdit("Vertical looting delta between objects", "0.03")
+		layout.addWidget(self.loot_delta_edit, 3, 1, 1, 1)
+
 		# toggle for loop fishing
 		self.auto_fish_toggle = QCheckBox("Auto pilot")
 		self.auto_fish_toggle.setChecked(True)
-		layout.addWidget(self.auto_fish_toggle, 3, 0, 1, 1)
+		layout.addWidget(self.auto_fish_toggle, 4, 0, 1, 1)
 
 		# Fish! button
 		self.fish_button = QPushButton("Fish")
 		self.fish_button.clicked.connect(self.start_fishing)
 		self.fish_button.setEnabled(False)
-		layout.addWidget(self.fish_button, 3, 1, 1, 2)
+		layout.addWidget(self.fish_button, 4, 1, 1, 2)
 
 		# warning label with hotkey to stop fishing
 		self.stop_fishing_label = DynamicLabel("Jump to stop fishing")
 		self.stop_fishing_label.setFont(QFont("Times", 12, QFont.Bold))
 		self.stop_fishing_label.setStyleSheet("color: red;")
 		self.stop_fishing_label.setVisible(False)
-		layout.addWidget(self.stop_fishing_label, 4, 0, 1, 3)
+		layout.addWidget(self.stop_fishing_label, 5, 0, 1, 3)
 
 		# label with the number of captures
 		self.tries_count_label = DynamicLabel("0 tries")
 		self.tries_count_label.setFont(QFont("Times", 24, QFont.Bold))
 		self.tries_count_label.setStyleSheet("color: red;")
-		layout.addWidget(self.tries_count_label, 5, 0, 1, 3)
+		layout.addWidget(self.tries_count_label, 6, 0, 1, 3)
 
 		# LOG FROM BOT ACTIVITY
 		self.log_viewer = Log()
@@ -187,6 +201,7 @@ class WowFishingBotUI:
 		# watch if the user jumps to stop fishing
 		while True:
 			time.sleep(0.001)
+			self.app.processEvents()
 			if keyboard.is_pressed(" "):
 				# kill fishing thread
 				self.fishing_thread.terminate()
@@ -226,9 +241,6 @@ class WowFishingBot:
 		self.frame = None
 		self.bait_window = None
 
-		self.loot_coords = [0.050, 0.29]  # relative coordinates of the location in the screen of the loot window
-		self.loot_coords_delta = 0.03  # vertical movement between different objects in the loot window
-
 		self.tries = 0
 
 	def make_screenshot(self):
@@ -245,10 +257,12 @@ class WowFishingBot:
 
 	def loot(self):
 		nitems = 3
+		loot_coords = [float(x) for x in self.UI.loot_coords_edit.edit.text().split(" ")]
+		loot_delta = float(self.UI.loot_delta_edit.edit.text())
 		for i in range(nitems):
 			time.sleep(0.5)
-			pyautogui.moveTo(x=self.frame[0] + (self.frame[2] - self.frame[0]) * self.loot_coords[0],
-							 y=self.frame[1] + (self.frame[3] - self.frame[1]) * (self.loot_coords[1] + i * self.loot_coords_delta),
+			pyautogui.moveTo(x=self.frame[0] + (self.frame[2] - self.frame[0]) * loot_coords[0],
+							 y=self.frame[1] + (self.frame[3] - self.frame[1]) * (loot_coords[1] + i * loot_delta),
 							 duration=0.5)
 			pyautogui.moveRel(4, 0, duration=0.05)
 			pyautogui.moveRel(-4, 0, duration=0.05)
@@ -325,7 +339,7 @@ class WowFishingBot:
 			# so usually it will not be centered vertically with the bait
 			self.watch_bait(bait_coords)
 			self.tries += 1
-			self.UI.tries_count_label.update_text("{} tries".format(str(self.tries)))
+			self.UI.tries_count_label.text_emitter.emit("{} tries".format(str(self.tries)))
 
 		self.jump()
 

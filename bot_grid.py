@@ -29,9 +29,11 @@ class Log(QTextEdit):
 
 	def update_log(self, text):
 		self.append("\n" + text)
+		self.repaint()
 
 
 class LabeledLineEdit(QGroupBox):
+	visibility_emitter = pyqtSignal(bool)
 
 	def __init__(self, label, default_text):
 		super().__init__()
@@ -44,6 +46,27 @@ class LabeledLineEdit(QGroupBox):
 
 		self.setFlat(True)
 		self.setStyleSheet("border:0;")
+
+	def set_visibility(self, v):
+		self.setVisible(v)
+		self.repaint()
+
+
+class DynamicLabel(QLabel):
+	emitter = pyqtSignal(str)
+	visibility_emitter = pyqtSignal(bool)
+
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		self.emitter.connect(lambda t: self.update_text(t))
+
+	def update_text(self, text):
+		self.setText(text)
+		self.repaint()
+
+	def set_visibility(self, v):
+		self.setVisible(v)
+		self.repaint()
 
 
 class WowFishingBotUI:
@@ -64,6 +87,7 @@ class WowFishingBotUI:
 		self.fishing_wait_time_edit = None
 		self.stop_fishing_label = None
 		self.fishing_thread = None
+		self.tries_count_label = None
 
 		self.create_ui()
 
@@ -114,11 +138,17 @@ class WowFishingBotUI:
 		layout.addWidget(self.fish_button, 3, 1, 1, 2)
 
 		# warning label with hotkey to stop fishing
-		self.stop_fishing_label = QLabel("Jump to stop fishing")
+		self.stop_fishing_label = DynamicLabel("Jump to stop fishing")
 		self.stop_fishing_label.setFont(QFont("Times", 12, QFont.Bold))
 		self.stop_fishing_label.setStyleSheet("color: red;")
 		self.stop_fishing_label.setVisible(False)
 		layout.addWidget(self.stop_fishing_label, 4, 0, 1, 3)
+
+		# label with the number of captures
+		self.tries_count_label = DynamicLabel("0 tries")
+		self.tries_count_label.setFont(QFont("Times", 24, QFont.Bold))
+		self.tries_count_label.setStyleSheet("color: red;")
+		layout.addWidget(self.tries_count_label, 5, 0, 1, 3)
 
 		# LOG FROM BOT ACTIVITY
 		self.log_viewer = Log()
@@ -141,15 +171,13 @@ class WowFishingBotUI:
 
 	def start_fishing(self):
 		# activate warning on how to stop fishing
-		self.stop_fishing_label.setVisible(True)
-		self.stop_fishing_label.repaint()
+		self.stop_fishing_label.visibility_emitter.emit(True)
 
 		# give user time to place mouse on WOW's window
 		self.log_viewer.emitter.emit("Place the cursor inside the WOW window")
 		for i in reversed(range(int(self.fishing_wait_time_edit.edit.text()))):
 			time.sleep(1)
 			self.log_viewer.emitter.emit("Fishing will start in {} ...".format(i))
-			self.log_viewer.repaint()
 
 		# launch fishing thread in parallel
 		self.fishing_thread = QThread()
@@ -163,8 +191,7 @@ class WowFishingBotUI:
 				# kill fishing thread
 				self.fishing_thread.terminate()
 				# remove warning on how to sto fishing
-				self.stop_fishing_label.setVisible(False)
-				self.stop_fishing_label.repaint()
+				self.stop_fishing_label.visibility_emitter.emit(False)
 
 				return
 
@@ -199,7 +226,7 @@ class WowFishingBot:
 		self.frame = None
 		self.bait_window = None
 
-		self.loot_coords = [0.053, 0.28]  # relative coordinates of the location in the screen of the loot window
+		self.loot_coords = [0.050, 0.29]  # relative coordinates of the location in the screen of the loot window
 		self.loot_coords_delta = 0.03  # vertical movement between different objects in the loot window
 
 		self.tries = 0
@@ -229,9 +256,11 @@ class WowFishingBot:
 
 	def watch_bait(self, bait_coords):
 		# capturing of the float window
-		bait_window = {'top': int(bait_coords[1] - self.bait_window / 2), 'left': int(bait_coords[0] - self.bait_window / 2),
-				  'width': self.bait_window, 'height': self.bait_window}
-		bait_prior = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
+		bait_window = {'top': int(bait_coords[1] - self.bait_window / 2),
+					   'left': int(bait_coords[0] - self.bait_window / 2),
+				  	   'width': self.bait_window,
+					   'height': self.bait_window}
+		bait_prior = utils.binarize_red(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
 
 		# list with all the differences between sampled images
 		all_diffs = []
@@ -240,7 +269,7 @@ class WowFishingBot:
 		done_getting_stats = False
 		self.UI.log_viewer.emitter.emit("watching float...")
 		t = time.time()
-		while time.time() - t < 30: # fishing process takes 30 secs
+		while time.time() - t < 30:  # fishing process takes 30 secs
 			float_current = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
 			diff = np.sum(np.multiply(float_current, bait_prior))
 			if time.time() - t > 4 and not done_getting_stats:
@@ -296,15 +325,16 @@ class WowFishingBot:
 			# so usually it will not be centered vertically with the bait
 			self.watch_bait(bait_coords)
 			self.tries += 1
-			self.UI.log_viewer.emitter.emit("Fishing try number {}".format(str(self.tries)))
+			self.UI.tries_count_label.update_text("{} tries".format(str(self.tries)))
 
 		self.jump()
 
 	def set_wow_frame(self, frame):
 		self.frame = frame
 		# dimension of the window that will encapsulate the bait
-		self.bait_window = int(frame[3] / 20)
+		self.bait_window = int(frame[3] / 10)
 
 
 if __name__ == "__main__":
 	botUI = WowFishingBotUI()
+	print("asd")

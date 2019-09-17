@@ -65,7 +65,15 @@ def get_window(window_name):
 
 
 def check_process(wow_name):
-	if wow_name in [psutil.Process(pid).name() for pid in psutil.pids()]:
+
+	program_names = []
+	for pid in psutil.pids():
+		try:
+			program_names.append(psutil.Process(pid).name())
+		except:
+			pass
+
+	if wow_name in program_names:
 		return True
 	else:
 		return False

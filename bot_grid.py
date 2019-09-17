@@ -10,8 +10,10 @@ from threading import Thread
 import os
 from PyQt5.QtWidgets import QApplication, QGridLayout, QTextEdit, QMainWindow, QGroupBox, QAction, QDialog, QListWidget, \
 QSizePolicy, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCheckBox
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal, QThread
+from PyQt5.QtGui import QFont
 import pyqtgraph as pg
+import keyboard
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
 pyautogui.PAUSE = 0.01
@@ -59,6 +61,9 @@ class WowFishingBotUI:
 		self.find_wow_button = None
 		self.fish_button = None
 		self.fish_key_edit = None
+		self.fishing_wait_time_edit = None
+		self.stop_fishing_label = None
+		self.fishing_thread = None
 
 		self.create_ui()
 
@@ -93,15 +98,27 @@ class WowFishingBotUI:
 		self.fish_key_edit = LabeledLineEdit("Fishing key:", "0")
 		layout.addWidget(self.fish_key_edit, 2, 0, 1, 1)
 
+		# fishing wait time
+		self.fishing_wait_time_edit = LabeledLineEdit("Waiting time before starting to fish", "4")
+		layout.addWidget(self.fishing_wait_time_edit, 2, 1, 1, 2)
+
 		# toggle for loop fishing
 		self.auto_fish_toggle = QCheckBox("Auto pilot")
+		self.auto_fish_toggle.setChecked(True)
 		layout.addWidget(self.auto_fish_toggle, 3, 0, 1, 1)
 
 		# Fish! button
 		self.fish_button = QPushButton("Fish")
-		self.fish_button.clicked.connect(self._fish)
+		self.fish_button.clicked.connect(self.start_fishing)
 		self.fish_button.setEnabled(False)
 		layout.addWidget(self.fish_button, 3, 1, 1, 2)
+
+		# warning label with hotkey to stop fishing
+		self.stop_fishing_label = QLabel("Jump to stop fishing")
+		self.stop_fishing_label.setFont(QFont("Times", 12, QFont.Bold))
+		self.stop_fishing_label.setStyleSheet("color: red;")
+		self.stop_fishing_label.setVisible(False)
+		layout.addWidget(self.stop_fishing_label, 4, 0, 1, 3)
 
 		# LOG FROM BOT ACTIVITY
 		self.log_viewer = Log()
@@ -117,14 +134,35 @@ class WowFishingBotUI:
 		self.app.exec_()
 
 	def _fish(self):
+		# activate warning on how to stop fishing
+		self.stop_fishing_label.setVisible(True)
+		self.stop_fishing_label.repaint()
+
+		# give user time to place mouse on WOW's window
+		self.log_viewer.emitter.emit("Place the cursor inside the WOW window")
+		for i in reversed(range(int(self.fishing_wait_time_edit.edit.text()))):
+			time.sleep(1)
+			self.log_viewer.emitter.emit("Fishing will start in {} ...".format(i))
+			self.log_viewer.repaint()
+
 		while True:
 			self.bot.fish_grid()
 			if not self.auto_fish_toggle.isChecked():
 				break
 
-	def start_bot(self):
-		thread = Thread(target=self._fish)
-		thread.start()
+		# remove warning on how to sto fishing
+		self.stop_fishing_label.setVisible(False)
+		self.stop_fishing_label.repaint()
+
+	def start_fishing(self):
+		self.fishing_thread = QThread()
+		self.fishing_thread.run = self._fish
+		self.fishing_thread.start()
+
+		while True:
+			time.sleep(0.001)
+			if keyboard.is_pressed(" "):
+				self.fishing_thread.terminate()
 
 	def find_wow(self):
 
@@ -148,12 +186,12 @@ class WowFishingBotUI:
 
 class WowFishingBot:
 
-	def __init__(self, UI):
+	def __init__(self, ui):
 		self.sct = mss()
-		self.UI = UI
+		self.UI = ui
 		self.dead_UI = False
-		self.gridFraction_horizontal = [0.3, 0.7]
-		self.gridFraction_vertical = [0.1, 0.4]
+		self.grid_frac_hor = [0.3, 0.7]
+		self.grid_frac_ver = [0.1, 0.4]
 		self.frame = None
 		self.bait_window = None
 
@@ -222,15 +260,20 @@ class WowFishingBot:
 			exit()
 		self.UI.log_viewer.emitter.emit("Throwing bait...")
 		self.throw_bait()
-		time.sleep(3)
 
 		grid_step = 20
 		found = False
 		bait_coords = None
-		for j in range(int(self.frame[1] + self.frame[3] * self.gridFraction_vertical[0]), int(self.frame[1] + self.frame[3] * self.gridFraction_vertical[1]), grid_step):
+
+		a = int(self.frame[1] + self.frame[3] * self.grid_frac_ver[0])
+		b = int(self.frame[1] + self.frame[3] * self.grid_frac_ver[1])
+		c = int(self.frame[0] + self.frame[2] * self.grid_frac_hor[0])
+		d = int(self.frame[0] + self.frame[2] * self.grid_frac_hor[1])
+
+		for j in range(a, b, grid_step):
 			if found:
 				break
-			for i in range(int(self.frame[0] + self.frame[2] * self.gridFraction_horizontal[0]) , int(self.frame[0] + self.frame[2] * self.gridFraction_horizontal[1]), grid_step):
+			for i in range(c, d, grid_step):
 				precursor = win32gui.GetCursorInfo()[1]
 				utils.move_mouse([i, j])
 				time.sleep(0.02)
@@ -245,7 +288,8 @@ class WowFishingBot:
 					bait_coords = [i, j]
 					break
 		if bait_coords is not None:
-			# lower a bit the window of the bait. The cursor grid from top to bottom so usually it will not be centered vertically with the bait
+			# lower a bit the window of the bait. The cursor grid from top to bottom
+			# so usually it will not be centered vertically with the bait
 			self.watch_bait(bait_coords)
 			self.tries += 1
 			self.UI.log_viewer.emitter.emit("Fishing try number {}".format(str(self.tries)))

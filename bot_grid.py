@@ -14,6 +14,7 @@ from PyQt5.QtCore import pyqtSignal, QThread
 from PyQt5.QtGui import QFont
 import pyqtgraph as pg
 import keyboard
+from scipy.ndimage import sobel
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
 pyautogui.PAUSE = 0.01
@@ -93,7 +94,6 @@ class WowFishingBotUI:
 		self.tries_count_label = None
 		self.loot_coords_edit = None
 		self.loot_delta_edit = None
-
 
 		self.create_ui()
 
@@ -237,7 +237,7 @@ class WowFishingBot:
 		self.UI = ui
 		self.dead_UI = False
 		self.grid_frac_hor = [0.3, 0.7]
-		self.grid_frac_ver = [0.1, 0.4]
+		self.grid_frac_ver = [0.1, 0.8]
 		self.frame = None
 		self.bait_window = None
 
@@ -249,6 +249,7 @@ class WowFishingBot:
 
 	def throw_bait(self):
 		pyautogui.hotkey(self.UI.fish_key_edit.edit.text())
+		time.sleep(1)
 
 	def jump(self):
 		self.UI.log_viewer.emitter.emit('Jump!')
@@ -274,7 +275,8 @@ class WowFishingBot:
 					   'left': int(bait_coords[0] - self.bait_window / 2),
 				  	   'width': self.bait_window,
 					   'height': self.bait_window}
-		bait_prior = utils.binarize_red(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
+
+		bait_prior = utils.binarize_red(cv2.GaussianBlur(np.array(self.sct.grab(bait_window)), (1, 31), 1))
 
 		# list with all the differences between sampled images
 		all_diffs = []
@@ -284,7 +286,7 @@ class WowFishingBot:
 		self.UI.log_viewer.emitter.emit("watching float...")
 		t = time.time()
 		while time.time() - t < 30:  # fishing process takes 30 secs
-			float_current = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
+			float_current = utils.binarize_red(cv2.GaussianBlur(np.array(self.sct.grab(bait_window)), (1, 31), 1))
 			diff = np.sum(np.multiply(float_current, bait_prior))
 			if time.time() - t > 4 and not done_getting_stats:
 				avg_diff = np.mean(all_diffs)
@@ -330,23 +332,21 @@ class WowFishingBot:
 					j += int(self.frame[2] / 100)
 					pyautogui.moveRel(0, int(self.frame[2] / 100), duration=0.05)
 
-					self.UI.log_viewer.emitter.emit("Found bait at coordinates {0} , {1}".format(i,j))
+					self.UI.log_viewer.emitter.emit("Found bait at coordinates {0} , {1}".format(i, j))
 
 					bait_coords = [i, j]
 					break
 		if bait_coords is not None:
-			# lower a bit the window of the bait. The cursor grid from top to bottom
-			# so usually it will not be centered vertically with the bait
 			self.watch_bait(bait_coords)
-			self.tries += 1
-			self.UI.tries_count_label.text_emitter.emit("{} tries".format(str(self.tries)))
 
+		self.tries += 1
+		self.UI.tries_count_label.text_emitter.emit("{} tries".format(str(self.tries)))
 		self.jump()
 
 	def set_wow_frame(self, frame):
 		self.frame = frame
 		# dimension of the window that will encapsulate the bait
-		self.bait_window = int(frame[3] / 10)
+		self.bait_window = int(frame[3] / 5)
 
 
 if __name__ == "__main__":

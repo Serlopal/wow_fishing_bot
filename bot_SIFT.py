@@ -251,7 +251,7 @@ class WowFishingBot():
 		# capturing of the float window
 		bait_window = {'top': int(bait_coords[1] - self.UI.bait_window / 2), 'left': int(bait_coords[0] - self.UI.bait_window / 2),
 				  'width': self.UI.bait_window, 'height': self.UI.bait_window}
-		bait_prior   = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
+		bait_prior = utils.binarize(utils.binarize_kmeans(np.array(self.sct.grab(bait_window))))
 
 		# list with all the differences between sampled images
 		all_diffs = []
@@ -261,7 +261,7 @@ class WowFishingBot():
 		self.UI.log_viewer.emitter.emit("watching float...")
 		t = time.time()
 		while time.time() - t < 30: # fishing process takes 30 secs
-			float_current = utils.binarize(utils.apply_kmeans_colors(np.array(self.sct.grab(bait_window))))
+			float_current = utils.binarize(utils.binarize_kmeans(np.array(self.sct.grab(bait_window))))
 			diff = np.sum(np.multiply(float_current, bait_prior))
 			# emit difference to signal viewer
 			self.UI.signal_viewer.emitter.emit(diff)

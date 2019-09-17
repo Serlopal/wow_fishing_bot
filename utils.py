@@ -17,7 +17,7 @@ def kmeans_apply(image, centroids):
 	return Z.reshape((image.shape))
 
 
-def apply_kmeans_colors(image):
+def binarize_kmeans(image):
 	if len(image.shape) > 2 and image.shape[2] == 4:
 		# convert the image from RGBA2RGB
 		image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
@@ -25,22 +25,41 @@ def apply_kmeans_colors(image):
 	# define criteria, number of clusters(K) and apply kmeans()
 	criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
 
-	Z = image.reshape((-1, 3))
-	# convert to np.float32
-	Z = np.float32(Z)
-	K = 2
-	_, label, centroids = cv2.kmeans(Z, K, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+	z = np.float32(image.reshape((-1, 3)))
+	k = 2
+	_, label, centroids = cv2.kmeans(z, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
 
 	centroids = np.uint8(centroids)
-	res = centroids[label.flatten()]
-	res2 = res.reshape((image.shape))
+	res = np.zeros((image.shape[0:2]))
 
-	return res2
+	# the bait centroid needs to be the second, index 1, so that we use white for that part
+	bait_centroid = np.argmax(centroids, axis=0)[0]
+	if bait_centroid == 0:
+		res = np.logical_not(label.flatten()).astype(int)
+
+	res = res.reshape(image.shape[0:2])
+	res[res == 1] = 255
+
+	return res
+
+
+def binarize_red(image):
+	if len(image.shape) > 2 and image.shape[2] == 4:
+		# convert the image from RGBA2RGB
+		image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+
+	red_threshold = 128
+	red_channel = image[:, :, 0]
+	binary_image = np.zeros_like(red_channel)
+	binary_image[red_channel > red_threshold] = 255
+
+	return binary_image
 
 
 def binarize(image):
 	image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 	unique, counts = np.unique(image, return_counts=True)
+	print(unique)
 	water_color = unique[np.argmax(counts)]
 	image[image == water_color] = 0
 	image[image != 0] = 255

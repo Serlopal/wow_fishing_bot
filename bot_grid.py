@@ -9,16 +9,22 @@ import utils
 from threading import Thread
 import os
 from PyQt5.QtWidgets import QApplication, QGridLayout, QTextEdit, QMainWindow, QGroupBox, QAction, QDialog, QListWidget, \
-QSizePolicy, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCheckBox
+QSizePolicy, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCheckBox, QGraphicsView, QGraphicsScene, QVBoxLayout
 from PyQt5.QtCore import pyqtSignal, QThread
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+
 from PyQt5.QtGui import QFont
 import pyqtgraph as pg
 import keyboard
-from scipy.ndimage import sobel
+from matplotlib import pyplot as plt
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
-pyautogui.PAUSE = 0.01
+pyautogui.PAUSE = 0.001
 pyautogui.FAILSAFE = False
+
+
+def monotonically_increasing(a):
+    return np.all(a[1:] >= a[:-1], axis=0)
 
 
 class Log(QTextEdit):
@@ -71,7 +77,36 @@ class DynamicLabel(QLabel):
 		self.repaint()
 
 
+class QImshow(QGraphicsView):
+	emitter = pyqtSignal(object)
+
+	def __init__(self):
+		super().__init__()
+		self._figure = plt.figure()
+		self.emitter.connect(self.update_figure)
+
+		self.scene = QGraphicsScene(self)
+		self.setScene(self.scene)
+		self.canvas = FigureCanvas(self._figure)
+		layout = QVBoxLayout()
+		layout.addWidget(self.canvas)
+		self.setLayout(layout)
+		self.canvas.show()
+
+	def update(self):
+		self.canvas.draw()
+		self.canvas.show()
+
+	def update_figure(self, frame):
+		figure = plt.figure()
+		plt.imshow(frame, figure=figure)
+
+		self.canvas.figure = figure
+		self.update()
+		self.repaint()
+
 # ----------------------------------------
+
 
 class WowFishingBotUI:
 
@@ -95,6 +130,8 @@ class WowFishingBotUI:
 		self.loot_coords_edit = None
 		self.loot_delta_edit = None
 		self.bait_mov_sensibility_edit = None
+		self.binary_image_widget = None
+		self.rgb_image_widget = None
 
 		self.create_ui()
 
@@ -171,7 +208,14 @@ class WowFishingBotUI:
 
 		# LOG FROM BOT ACTIVITY
 		self.log_viewer = Log()
-		layout.addWidget(self.log_viewer, 10, 0, 10, 10)
+		layout.addWidget(self.log_viewer, 10, 0, 3, 10)
+
+		# image display
+		self.binary_image_widget = QImshow()
+		layout.addWidget(self.binary_image_widget, 13, 0, 5, 1)
+		self.rgb_image_widget = QImshow()
+		layout.addWidget(self.rgb_image_widget, 13, 1, 5, 1)
+
 		central_widget.setLayout(layout)
 		self.window.setCentralWidget(central_widget)
 
@@ -219,6 +263,7 @@ class WowFishingBotUI:
 
 		process_running = utils.check_process(self.game_process_name.edit.text())
 		window = utils.get_window(self.window_name.edit.text())
+		print(self.window_name.edit.text())
 
 		# check Wow is running
 		if process_running and window:
@@ -281,36 +326,60 @@ class WowFishingBot:
 				  	   'width': self.bait_window,
 					   'height': self.bait_window}
 
-		bait_prior = self.process_bait(bait_window)
-
-		cv2.imwrite("asd.jpg", bait_prior)
-		cv2.imwrite("full.jpg", np.array(self.sct.grab(bait_window)))
-
-		# list with all the differences between sampled images
 		all_diffs = []
-		avg_diff = 0
-		std_diff = 0
 		stats_time = 2
+		first = True
 		std_scale = float(self.UI.bait_mov_sensibility_edit.edit.text())
+		# pass_centroid = np.zeros(2)
+		# pass_contour = None
+		pass_bait = None
 
 		self.UI.log_viewer.emitter.emit("watching float...")
 		t = time.time()
+
+		# start looping
+
+		bait_image = np.array(self.sct.grab(bait_window))
+		current_bait = self.process_bait(bait_image)
+		cv2.imwrite("asd.jpg", current_bait*255)
+		cv2.imwrite("full.jpg", bait_image)
+
 		while time.time() - t < 30:  # fishing process takes 30 secs
-			current_bait = self.process_bait(bait_window)
+			# current_centroid = self.compute_centroid(current_bait.astype('uint8'))
+			# current_contour = self.compute_contour(current_bait.astype('uint8'))
 
-			# diff = np.sum(np.multiply(current_bait, bait_prior))
-			diff = np.correlate(current_bait.flatten(), bait_prior.flatten())
+			# self.UI.binary_image_widget.emitter.emit(current_bait * 255)
+			# self.UI.rgb_image_widget.emitter.emit(bait_image)
 
-			if time.time() - t > stats_time and diff < np.mean(all_diffs) - std_scale * np.std(all_diffs):
-				pyautogui.rightClick()
-				self.UI.log_viewer.emitter.emit("tried to capture fish")
-				time.sleep(0.2)
-				self.UI.log_viewer.emitter.emit("looting the fish...")
-				self.loot()
-				break
+			if not first:
+				diff = np.sum(np.multiply(current_bait, pass_bait))
+				# diff = np.linalg.norm(current_centroid-pass_centroid)
+				# diff = cv2.matchShapes(current_contour, pass_contour, 1, 0.0)
+				# diff = np.correlate(current_bait.flatten(), bait_prior.flatten())
+				# diff = np.count_nonzero(current_bait == bait_prior)
 
-			bait_prior = current_bait
-			all_diffs.append(diff)
+				all_diffs.append(diff)
+
+				# print("{0: <5} - {1: <5}".format(np.round(diff, 2), np.round(np.mean(all_diffs) + std_scale * np.std(all_diffs), 2)))
+
+				if time.time() - t > stats_time and diff > np.mean(all_diffs) + std_scale * np.std(all_diffs):
+					pyautogui.rightClick()
+					self.UI.log_viewer.emitter.emit("tried to capture fish")
+					time.sleep(0.2)
+					self.UI.log_viewer.emitter.emit("looting the fish...")
+					self.loot()
+					break
+
+			# new is now old
+			# pass_centroid = current_centroid
+			# pass_contour = current_contour
+			pass_bait = current_bait
+
+			# grab a new frame
+			bait_image = np.array(self.sct.grab(bait_window))
+			current_bait = self.process_bait(bait_image)
+
+			first = False
 
 	def fish_grid(self):
 		if self.dead_UI:
@@ -356,8 +425,41 @@ class WowFishingBot:
 		# dimension of the window that will encapsulate the bait
 		self.bait_window = int(frame[3] / 5)
 
-	def process_bait(self, image):
-		return utils.binarize_red(cv2.GaussianBlur(np.array(self.sct.grab(image)), (1, 31), 1))
+	@staticmethod
+	def grayscale(image):
+		if len(image.shape) > 2 and image.shape[2] == 4:
+			# convert the image from RGBA2RGB
+			image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+		return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+	@staticmethod
+	def process_bait(img):
+		return utils.binarize_kmeans(cv2.GaussianBlur(img, (51, 51), 1))
+
+	def compute_centroid(self, image):
+		_, contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+		center = np.zeros(2)
+
+		if len(contours) > 0:
+			c = max(contours, key=cv2.contourArea)
+			((x, y), radius) = cv2.minEnclosingCircle(c)
+			m = cv2.moments(c)
+			center = np.array([int(m["m10"] / m["m00"]), int(m["m01"] / m["m00"])])
+		else:
+			self.UI.log_viewer.emitter.emit("No bait found on the image!")
+
+		return center
+
+	def compute_contour(self, image):
+		_, contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+		center = np.zeros(2)
+
+		if len(contours) > 0:
+			center = max(contours, key=cv2.contourArea)
+		else:
+			self.UI.log_viewer.emitter.emit("No bait found on the image!")
+
+		return center
 
 
 if __name__ == "__main__":

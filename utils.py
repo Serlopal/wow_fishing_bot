@@ -5,6 +5,7 @@ import psutil
 import win32gui
 import win32api, win32con
 import time
+from skimage.segmentation import slic
 
 
 def kmeans_apply(image, centroids):
@@ -30,17 +31,16 @@ def binarize_kmeans(image):
 	_, label, centroids = cv2.kmeans(z, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
 
 	centroids = np.uint8(centroids)
-	res = np.zeros((image.shape[0:2]))
+	res = label.flatten()
 
-	# the bait centroid needs to be the second, index 1, so that we use white for that part
-	bait_centroid = np.argmax(centroids, axis=0)[0]
-	if bait_centroid == 0:
-		res = np.logical_not(label.flatten()).astype(int)
+	# compute dominant color -> the water
+	unique, counts = np.unique(res, return_counts=True)
+	water_centroid = np.argmax(counts)
 
-	res = res.reshape(image.shape[0:2])
-	res[res == 1] = 255
+	if water_centroid == 1:
+		res = np.logical_not(res).astype(int)
 
-	return res
+	return res.reshape(image.shape[0:2])
 
 
 def binarize_red(image):
@@ -60,7 +60,16 @@ def binarize_red(image):
 
 	binary_mask = np.multiply(binary_red_blue, binary_red_green)
 
-	return binary_mask # np.multiply(binary_mask, cv2.cvtColor(image, cv2.COLOR_RGB2GRAY))
+	return binary_mask  # np.multiply(binary_mask, cv2.cvtColor(image, cv2.COLOR_RGB2GRAY))
+
+
+def binarize_slic(image):
+	labels = slic(image, n_segments=3, compactness=0.1)
+	# using 2 segments outputs a blank image, therefore we merge the two dominant clusters as water
+	unique, counts = np.unique(labels, return_counts=True)
+	bait_cluster = unique[np.argmin(counts)]
+
+	return (labels == bait_cluster).astype('int')
 
 
 def binarize(image):

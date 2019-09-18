@@ -48,18 +48,24 @@ def binarize_red(image):
 		# convert the image from RGBA2RGB
 		image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
 
-	red_threshold = 128
 	red_channel = image[:, :, 0]
-	binary_image = np.zeros_like(red_channel)
-	binary_image[red_channel > red_threshold] = 255
+	green_channel = image[:, :, 1]
+	blue_channel = image[:, :, 2]
 
-	return binary_image
+	binary_red_blue = np.zeros_like(red_channel)
+	binary_red_blue[red_channel > blue_channel] = 1
+
+	binary_red_green = np.zeros_like(red_channel)
+	binary_red_green[red_channel > green_channel] = 1
+
+	binary_mask = np.multiply(binary_red_blue, binary_red_green)
+
+	return binary_mask # np.multiply(binary_mask, cv2.cvtColor(image, cv2.COLOR_RGB2GRAY))
 
 
 def binarize(image):
 	image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 	unique, counts = np.unique(image, return_counts=True)
-	print(unique)
 	water_color = unique[np.argmax(counts)]
 	image[image == water_color] = 0
 	image[image != 0] = 255

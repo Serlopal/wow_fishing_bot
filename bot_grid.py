@@ -94,6 +94,7 @@ class WowFishingBotUI:
 		self.tries_count_label = None
 		self.loot_coords_edit = None
 		self.loot_delta_edit = None
+		self.bait_mov_sensibility_edit = None
 
 		self.create_ui()
 
@@ -140,29 +141,33 @@ class WowFishingBotUI:
 		self.loot_delta_edit = LabeledLineEdit("Vertical looting delta between objects", "0.03")
 		layout.addWidget(self.loot_delta_edit, 3, 1, 1, 1)
 
+		# bait movement sensibility (in standard deviations)
+		self.bait_mov_sensibility_edit = LabeledLineEdit("Bait movement sensibility (in stds)", "3")
+		layout.addWidget(self.bait_mov_sensibility_edit, 4, 0, 1, 1)
+
 		# toggle for loop fishing
 		self.auto_fish_toggle = QCheckBox("Auto pilot")
 		self.auto_fish_toggle.setChecked(True)
-		layout.addWidget(self.auto_fish_toggle, 4, 0, 1, 1)
+		layout.addWidget(self.auto_fish_toggle, 5, 0, 1, 1)
 
 		# Fish! button
 		self.fish_button = QPushButton("Fish")
 		self.fish_button.clicked.connect(self.start_fishing)
 		self.fish_button.setEnabled(False)
-		layout.addWidget(self.fish_button, 4, 1, 1, 2)
+		layout.addWidget(self.fish_button, 5, 1, 1, 2)
 
 		# warning label with hotkey to stop fishing
 		self.stop_fishing_label = DynamicLabel("Jump to stop fishing")
 		self.stop_fishing_label.setFont(QFont("Times", 12, QFont.Bold))
 		self.stop_fishing_label.setStyleSheet("color: red;")
 		self.stop_fishing_label.setVisible(False)
-		layout.addWidget(self.stop_fishing_label, 5, 0, 1, 3)
+		layout.addWidget(self.stop_fishing_label, 6, 0, 1, 3)
 
 		# label with the number of captures
 		self.tries_count_label = DynamicLabel("0 tries")
 		self.tries_count_label.setFont(QFont("Times", 24, QFont.Bold))
 		self.tries_count_label.setStyleSheet("color: red;")
-		layout.addWidget(self.tries_count_label, 6, 0, 1, 3)
+		layout.addWidget(self.tries_count_label, 7, 0, 1, 3)
 
 		# LOG FROM BOT ACTIVITY
 		self.log_viewer = Log()
@@ -276,32 +281,35 @@ class WowFishingBot:
 				  	   'width': self.bait_window,
 					   'height': self.bait_window}
 
-		bait_prior = utils.binarize_red(cv2.GaussianBlur(np.array(self.sct.grab(bait_window)), (1, 31), 1))
+		bait_prior = self.process_bait(bait_window)
+
+		cv2.imwrite("asd.jpg", bait_prior)
+		cv2.imwrite("full.jpg", np.array(self.sct.grab(bait_window)))
 
 		# list with all the differences between sampled images
 		all_diffs = []
 		avg_diff = 0
 		std_diff = 0
-		done_getting_stats = False
+		stats_time = 2
+		std_scale = float(self.UI.bait_mov_sensibility_edit.edit.text())
+
 		self.UI.log_viewer.emitter.emit("watching float...")
 		t = time.time()
 		while time.time() - t < 30:  # fishing process takes 30 secs
-			float_current = utils.binarize_red(cv2.GaussianBlur(np.array(self.sct.grab(bait_window)), (1, 31), 1))
-			diff = np.sum(np.multiply(float_current, bait_prior))
-			if time.time() - t > 4 and not done_getting_stats:
-				avg_diff = np.mean(all_diffs)
-				std_diff = np.std(all_diffs)
-				done_getting_stats = True
+			current_bait = self.process_bait(bait_window)
 
-			if time.time() - t > 4:
-				if diff < avg_diff - 3 * std_diff:
-					pyautogui.rightClick()
-					self.UI.log_viewer.emitter.emit("tried to capture fish")
-					time.sleep(0.2)
-					self.UI.log_viewer.emitter.emit("looting the fish...")
-					self.loot()
-					break
-			bait_prior = float_current
+			# diff = np.sum(np.multiply(current_bait, bait_prior))
+			diff = np.correlate(current_bait.flatten(), bait_prior.flatten())
+
+			if time.time() - t > stats_time and diff < np.mean(all_diffs) - std_scale * np.std(all_diffs):
+				pyautogui.rightClick()
+				self.UI.log_viewer.emitter.emit("tried to capture fish")
+				time.sleep(0.2)
+				self.UI.log_viewer.emitter.emit("looting the fish...")
+				self.loot()
+				break
+
+			bait_prior = current_bait
 			all_diffs.append(diff)
 
 	def fish_grid(self):
@@ -347,6 +355,9 @@ class WowFishingBot:
 		self.frame = frame
 		# dimension of the window that will encapsulate the bait
 		self.bait_window = int(frame[3] / 5)
+
+	def process_bait(self, image):
+		return utils.binarize_red(cv2.GaussianBlur(np.array(self.sct.grab(image)), (1, 31), 1))
 
 
 if __name__ == "__main__":

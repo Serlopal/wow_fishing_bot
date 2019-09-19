@@ -72,6 +72,10 @@ def binarize_slic(image):
 	return (labels == bait_cluster).astype('int')
 
 
+def binarize_canny(image):
+	return cv2.Canny(image, 100, 200)
+
+
 def binarize(image):
 	image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 	unique, counts = np.unique(image, return_counts=True)

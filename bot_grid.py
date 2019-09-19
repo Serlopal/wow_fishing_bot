@@ -17,6 +17,8 @@ from PyQt5.QtGui import QFont
 import pyqtgraph as pg
 import keyboard
 from matplotlib import pyplot as plt
+from scipy.stats import linregress
+from collections import deque
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
 pyautogui.PAUSE = 0.001
@@ -105,6 +107,40 @@ class QImshow(pg.GraphicsLayoutWidget):
 		else:
 			pass
 
+
+class QSignalViewer(pg.PlotWidget):
+	emitter = pyqtSignal(object)
+
+	def __init__(self, num_signals, yrange=None):
+		super().__init__()
+		# save number of signals
+		self.nplots = num_signals
+		# set number of samples to be displayed per signal at a time
+		self.nsamples = 500
+		# connect the signal to be emitted by the feeder to the slot of the plotWidget that will update the signals
+		self.emitter.connect(lambda values: self.update(values))
+		# buffer to store the data from all signals
+		self.buff = np.zeros((self.nplots, self.nsamples))
+		# limit range
+		if yrange:
+			self.setYRange(*yrange)
+		# create curves for the signals
+		self.curves = []
+		for i in range(self.nplots):
+			c = pg.PlotCurveItem(pen=(i, self.nplots * 1.3))
+			self.addItem(c)
+			self.curves.append(c)
+
+	def update(self, data):
+		# update buffer
+		self.buff = np.concatenate([self.buff[:, 1:], np.reshape(data, (-1, 1))], axis=1)
+		# update plots
+		for i in range(self.nplots):
+			self.curves[i].setData(self.buff[i])
+
+	def update_signals(self, values):
+		self.emitter.emit(values)
+
 # ----------------------------------------
 
 
@@ -133,6 +169,10 @@ class WowFishingBotUI:
 		self.binary_image_widget = None
 		self.rgb_image_widget = None
 		self.background_model = None
+		self.diff_signal_viewer = None
+		self.slope_signal_viewer = None
+		self.post_detection_sleep_edit = None
+		self.slope_samples_edit = None
 
 		self.create_ui()
 
@@ -183,10 +223,13 @@ class WowFishingBotUI:
 		self.bait_mov_sensibility_edit = LabeledLineEdit("Bait movement sensibility (in stds)", "3")
 		layout.addWidget(self.bait_mov_sensibility_edit, 4, 0, 1, 1)
 
-		# toggle for loop fishing
-		self.auto_fish_toggle = QCheckBox("Auto pilot")
-		self.auto_fish_toggle.setChecked(True)
-		layout.addWidget(self.auto_fish_toggle, 5, 0, 1, 1)
+		# bait movement sensibility (in standard deviations)
+		self.post_detection_sleep_edit = LabeledLineEdit("Time to sleep after detection", "0.1")
+		layout.addWidget(self.post_detection_sleep_edit, 4, 1, 1, 1)
+
+		# bait movement sensibility (in standard deviations)
+		self.slope_samples_edit = LabeledLineEdit("Slope estimation samples", "15")
+		layout.addWidget(self.slope_samples_edit, 5, 0, 1, 1)
 
 		# Fish! button
 		self.fish_button = QPushButton("Fish")
@@ -194,28 +237,40 @@ class WowFishingBotUI:
 		self.fish_button.setEnabled(False)
 		layout.addWidget(self.fish_button, 5, 1, 1, 2)
 
+		# toggle for loop fishing
+		self.auto_fish_toggle = QCheckBox("Auto pilot")
+		self.auto_fish_toggle.setChecked(True)
+		layout.addWidget(self.auto_fish_toggle, 6, 0, 1, 1)
+
 		# warning label with hotkey to stop fishing
 		self.stop_fishing_label = DynamicLabel("Jump to stop fishing")
 		self.stop_fishing_label.setFont(QFont("Times", 12, QFont.Bold))
 		self.stop_fishing_label.setStyleSheet("color: red;")
 		self.stop_fishing_label.setVisible(False)
-		layout.addWidget(self.stop_fishing_label, 6, 0, 1, 3)
+		layout.addWidget(self.stop_fishing_label, 7, 0, 1, 3)
 
 		# label with the number of captures
 		self.tries_count_label = DynamicLabel("0 tries")
 		self.tries_count_label.setFont(QFont("Times", 24, QFont.Bold))
 		self.tries_count_label.setStyleSheet("color: red;")
-		layout.addWidget(self.tries_count_label, 7, 0, 1, 3)
+		layout.addWidget(self.tries_count_label, 8, 0, 1, 3)
 
 		# LOG FROM BOT ACTIVITY
 		self.log_viewer = Log()
-		layout.addWidget(self.log_viewer, 10, 0, 3, 10)
+		layout.addWidget(self.log_viewer, 11, 0, 3, 10)
 
 		# image display
 		self.binary_image_widget = QImshow()
-		layout.addWidget(self.binary_image_widget, 13, 0, 5, 1)
+		layout.addWidget(self.binary_image_widget, 14, 0, 5, 1)
 		self.rgb_image_widget = QImshow()
-		layout.addWidget(self.rgb_image_widget, 13, 1, 5, 1)
+		layout.addWidget(self.rgb_image_widget, 14, 1, 5, 1)
+
+		# signal display
+		self.diff_signal_viewer = QSignalViewer(1, yrange=(0, 500))
+		layout.addWidget(self.diff_signal_viewer, 20, 0, 5, 1)
+
+		self.slope_signal_viewer = QSignalViewer(1, yrange=(0, 10))
+		layout.addWidget(self.slope_signal_viewer, 20, 1, 5, 1)
 
 		central_widget.setLayout(layout)
 		self.window.setCentralWidget(central_widget)
@@ -291,6 +346,7 @@ class WowFishingBot:
 		self.grid_frac_ver = [0.1, 0.8]
 		self.frame = None
 		self.bait_window = None
+		self.slope_samples = 3
 
 		self.tries = 0
 
@@ -327,7 +383,10 @@ class WowFishingBot:
 				  	   'width': self.bait_window,
 					   'height': self.bait_window}
 
-		all_diffs = []
+		diff_buffer = []
+		slope_samples_number = int(self.UI.slope_samples_edit.edit.text())
+		slope_buffer = []
+
 		stats_time = 2
 		first = True
 		std_scale = float(self.UI.bait_mov_sensibility_edit.edit.text())
@@ -348,23 +407,30 @@ class WowFishingBot:
 			# current_contour = self.compute_contour(current_bait.astype('uint8'))
 
 			if not first:
-				diff = np.sum(np.multiply(current_bait, pass_bait))
 				# diff = np.linalg.norm(current_centroid-pass_centroid)
 				# diff = cv2.matchShapes(current_contour, pass_contour, 1, 0.0)
 				# diff = np.correlate(current_bait.flatten(), bait_prior.flatten())
 				# diff = np.count_nonzero(current_bait == bait_prior)
+				diff = np.sum(np.multiply(current_bait, pass_bait))
 
-				all_diffs.append(diff)
+				diff_buffer.append(diff)
 
-				# print("{0: <5} - {1: <5}".format(np.round(diff, 2), np.round(np.mean(all_diffs) + std_scale * np.std(all_diffs), 2)))
+				if len(diff_buffer) >= slope_samples_number:
+					slope = np.abs(linregress(np.arange(slope_samples_number), diff_buffer[-slope_samples_number:]).slope)
+					slope_buffer.append(slope)
+					slope_threshold = np.mean(slope_buffer) + std_scale * np.std(slope_buffer)
 
-				if time.time() - t > stats_time and diff > np.mean(all_diffs) + std_scale * np.std(all_diffs):
-					pyautogui.rightClick()
-					self.UI.log_viewer.emitter.emit("tried to capture fish")
-					time.sleep(0.2)
-					self.UI.log_viewer.emitter.emit("looting the fish...")
-					self.loot()
-					break
+					self.UI.diff_signal_viewer.emitter.emit(diff)
+					self.UI.slope_signal_viewer.emitter.emit(slope)
+
+					if time.time() - t > stats_time and slope > slope_threshold:
+						time.sleep(float(self.UI.post_detection_sleep_edit.edit.text()))
+						pyautogui.rightClick()
+						self.UI.log_viewer.emitter.emit("tried to capture fish")
+						time.sleep(0.2)
+						self.UI.log_viewer.emitter.emit("looting the fish...")
+						self.loot()
+						break
 
 			# new is now old
 			# pass_centroid = current_centroid
@@ -434,7 +500,8 @@ class WowFishingBot:
 
 	@staticmethod
 	def process_bait(img):
-		return utils.binarize_kmeans(cv2.GaussianBlur(img, (51, 51), 1))
+		# return utils.binarize_kmeans(cv2.GaussianBlur(img, (51, 51), 3))
+		return utils.binarize_canny(img)
 
 	def compute_centroid(self, image):
 		_, contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)

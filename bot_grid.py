@@ -10,7 +10,7 @@ from threading import Thread
 import os
 from PyQt5.QtWidgets import QApplication, QGridLayout, QTextEdit, QMainWindow, QGroupBox, QAction, QDialog, QListWidget, \
 QSizePolicy, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCheckBox, QGraphicsView, QGraphicsScene, QVBoxLayout
-from PyQt5.QtCore import pyqtSignal, QThread
+from PyQt5.QtCore import pyqtSignal, QThread, QRectF
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 from PyQt5.QtGui import QFont
@@ -77,33 +77,33 @@ class DynamicLabel(QLabel):
 		self.repaint()
 
 
-class QImshow(QGraphicsView):
+class QImshow(pg.GraphicsLayoutWidget):
 	emitter = pyqtSignal(object)
 
 	def __init__(self):
 		super().__init__()
-		self._figure = plt.figure()
-		self.emitter.connect(self.update_figure)
 
-		self.scene = QGraphicsScene(self)
-		self.setScene(self.scene)
-		self.canvas = FigureCanvas(self._figure)
-		layout = QVBoxLayout()
-		layout.addWidget(self.canvas)
-		self.setLayout(layout)
-		self.canvas.show()
+		self.emitter.connect(lambda x: self.update_figure(x))
 
-	def update(self):
-		self.canvas.draw()
-		self.canvas.show()
+		self._view = self.addViewBox()
+		self._view.setAspectLocked(True)
+		self._img = pg.ImageItem(border='w')
+		self._view.addItem(self._img)
+		self._view.setRange(QRectF(0, 0, 128, 128))
+
+		self.lock = time.time()
+		self.fps = 25
+		self.freq = 1/self.fps
 
 	def update_figure(self, frame):
-		figure = plt.figure()
-		plt.imshow(frame, figure=figure)
+		if time.time() - self.lock > self.freq:
+			self.lock = time.time()
 
-		self.canvas.figure = figure
-		self.update()
-		self.repaint()
+			self._img.setImage(frame)
+
+			self.repaint()
+		else:
+			pass
 
 # ----------------------------------------
 
@@ -132,6 +132,7 @@ class WowFishingBotUI:
 		self.bait_mov_sensibility_edit = None
 		self.binary_image_widget = None
 		self.rgb_image_widget = None
+		self.background_model = None
 
 		self.create_ui()
 
@@ -341,15 +342,10 @@ class WowFishingBot:
 
 		bait_image = np.array(self.sct.grab(bait_window))
 		current_bait = self.process_bait(bait_image)
-		cv2.imwrite("asd.jpg", current_bait*255)
-		cv2.imwrite("full.jpg", bait_image)
 
 		while time.time() - t < 30:  # fishing process takes 30 secs
 			# current_centroid = self.compute_centroid(current_bait.astype('uint8'))
 			# current_contour = self.compute_contour(current_bait.astype('uint8'))
-
-			# self.UI.binary_image_widget.emitter.emit(current_bait * 255)
-			# self.UI.rgb_image_widget.emitter.emit(bait_image)
 
 			if not first:
 				diff = np.sum(np.multiply(current_bait, pass_bait))
@@ -378,6 +374,10 @@ class WowFishingBot:
 			# grab a new frame
 			bait_image = np.array(self.sct.grab(bait_window))
 			current_bait = self.process_bait(bait_image)
+
+			# plot
+			self.UI.binary_image_widget.emitter.emit(np.rot90(current_bait * 255, k=3))
+			self.UI.rgb_image_widget.emitter.emit(np.rot90(bait_image, k=3))
 
 			first = False
 
@@ -460,6 +460,9 @@ class WowFishingBot:
 			self.UI.log_viewer.emitter.emit("No bait found on the image!")
 
 		return center
+
+	def binarize_background_model(self, img):
+		return self.background_model.apply(img, learningRate=0.0)
 
 
 if __name__ == "__main__":

@@ -212,7 +212,7 @@ class WowFishingBotUI:
 		layout.addWidget(self.fishing_wait_time_edit, 2, 1, 1, 2)
 
 		# looting coordinates
-		self.loot_coords_edit = LabeledLineEdit("Relative looting coords from to left corner", "0.050 0.29")
+		self.loot_coords_edit = LabeledLineEdit("Relative looting coords from to left corner", "0.048 0.31")
 		layout.addWidget(self.loot_coords_edit, 3, 0, 1, 1)
 
 		# looting delta
@@ -220,15 +220,15 @@ class WowFishingBotUI:
 		layout.addWidget(self.loot_delta_edit, 3, 1, 1, 1)
 
 		# bait movement sensibility (in standard deviations)
-		self.bait_mov_sensibility_edit = LabeledLineEdit("Bait movement sensibility (in stds)", "3")
+		self.bait_mov_sensibility_edit = LabeledLineEdit("Bait movement sensibility (in stds)", "4")
 		layout.addWidget(self.bait_mov_sensibility_edit, 4, 0, 1, 1)
 
 		# bait movement sensibility (in standard deviations)
-		self.post_detection_sleep_edit = LabeledLineEdit("Time to sleep after detection", "0.1")
+		self.post_detection_sleep_edit = LabeledLineEdit("Time to sleep after detection", "0.0")
 		layout.addWidget(self.post_detection_sleep_edit, 4, 1, 1, 1)
 
 		# bait movement sensibility (in standard deviations)
-		self.slope_samples_edit = LabeledLineEdit("Slope estimation samples", "15")
+		self.slope_samples_edit = LabeledLineEdit("Slope estimation samples", "30")
 		layout.addWidget(self.slope_samples_edit, 5, 0, 1, 1)
 
 		# Fish! button
@@ -266,10 +266,10 @@ class WowFishingBotUI:
 		layout.addWidget(self.rgb_image_widget, 14, 1, 5, 1)
 
 		# signal display
-		self.score_signal_viewer = QSignalViewer(2, None)
+		self.score_signal_viewer = QSignalViewer(1, None)
 		layout.addWidget(self.score_signal_viewer, 20, 0, 5, 1)
 
-		self.slope_signal_viewer = QSignalViewer(1, yrange=(0, 10))
+		self.slope_signal_viewer = QSignalViewer(2, None)
 		layout.addWidget(self.slope_signal_viewer, 20, 1, 5, 1)
 
 		central_widget.setLayout(layout)
@@ -341,17 +341,12 @@ class WowFishingBot:
 		self.sct = mss()
 		self.UI = ui
 		self.dead_UI = False
-		self.grid_frac_hor = [0.3, 0.7]
-		self.grid_frac_ver = [0.1, 0.8]
+		self.grid_frac_hor = [0.4, 0.6]
+		self.grid_frac_ver = [0.1, 0.6]
 		self.frame = None
 		self.bait_window = None
 		self.slope_samples = 3
-
 		self.tries = 0
-
-	def make_screenshot(self):
-		color_frame = self.color_frame = self.sct.grab(self.frame)
-		return cv2.cvtColor(np.array(color_frame), cv2.COLOR_RGB2GRAY)
 
 	def throw_bait(self):
 		pyautogui.hotkey(self.UI.fish_key_edit.edit.text())
@@ -382,14 +377,17 @@ class WowFishingBot:
 				  	   'width': self.bait_window,
 					   'height': self.bait_window}
 
-		score_buffer = []
+		slope_samples_number = int(self.UI.slope_samples_edit.edit.text())
+
+		score_buffer = deque(maxlen=slope_samples_number)
+		slope_buffer = []
 		std_scale = float(self.UI.bait_mov_sensibility_edit.edit.text())
 
 		self.UI.log_viewer.emitter.emit("watching float...")
 
 		fishing_time = 30
-		mask_stats_time = 1
-		score_stats_time = 1
+		mask_stats_time = 2
+		score_stats_time = 2
 		watch_bait_time = fishing_time - mask_stats_time - score_stats_time
 
 		# ---- GET BAIT MASK ------
@@ -406,26 +404,34 @@ class WowFishingBot:
 			current_bait = self.get_bait_mask(bait_window).astype('int')
 			self.display_bait(current_bait, None)
 			score = np.sum(np.divide(current_bait, acc_mask))
+			self.display_signals([score], widget="score_signal_viewer")
 			score_buffer.append(score)
-		score_threshold = np.mean(score_buffer) + std_scale * np.std(score_buffer)
+			if len(score_buffer) >= slope_samples_number:
+				slope_buffer.append(np.abs(linregress(np.arange(slope_samples_number), score_buffer).slope))
+		slope_threshold = np.mean(slope_buffer) + std_scale * np.std(slope_buffer)
 
 		# ---- WATCH BAIT FOR FISH ------
+		score_buffer.clear()
 		while time.time() - t < watch_bait_time:
 			bait_image = np.array(self.sct.grab(bait_window))
 			current_bait = self.process_bait(bait_image)
 			score = np.sum(np.divide(current_bait, acc_mask))
+			score_buffer.append(score)
 
-			if score > score_threshold:
-				time.sleep(float(self.UI.post_detection_sleep_edit.edit.text()))
-				pyautogui.rightClick()
-				self.UI.log_viewer.emitter.emit("tried to capture fish")
-				time.sleep(0.2)
-				self.UI.log_viewer.emitter.emit("looting the fish...")
-				self.loot()
-				break
+			if len(score_buffer) >= slope_samples_number:
+				slope = np.abs(linregress(np.arange(slope_samples_number), score_buffer).slope)
+				if slope > slope_threshold:
+					time.sleep(float(self.UI.post_detection_sleep_edit.edit.text()))
+					pyautogui.rightClick()
+					self.UI.log_viewer.emitter.emit("tried to capture fish")
+					time.sleep(0.2)
+					self.UI.log_viewer.emitter.emit("looting the fish...")
+					self.loot()
+					break
 
-			self.display_bait(current_bait, bait_image)
-			self.display_signals([score, score_threshold])
+				self.display_bait(current_bait, bait_image)
+				self.display_signals([score], widget="score_signal_viewer")
+				self.display_signals([slope, slope_threshold], widget="slope_signal_viewer")
 
 	def fish_grid(self):
 		if self.dead_UI:
@@ -479,41 +485,13 @@ class WowFishingBot:
 		# return utils.binarize_kmeans(cv2.GaussianBlur(img, (51, 51), 3))
 		return utils.binarize_canny(img)
 
-	def compute_centroid(self, image):
-		_, contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-		center = np.zeros(2)
-
-		if len(contours) > 0:
-			c = max(contours, key=cv2.contourArea)
-			((x, y), radius) = cv2.minEnclosingCircle(c)
-			m = cv2.moments(c)
-			center = np.array([int(m["m10"] / m["m00"]), int(m["m01"] / m["m00"])])
-		else:
-			self.UI.log_viewer.emitter.emit("No bait found on the image!")
-
-		return center
-
-	def compute_contour(self, image):
-		_, contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-		center = np.zeros(2)
-
-		if len(contours) > 0:
-			center = max(contours, key=cv2.contourArea)
-		else:
-			self.UI.log_viewer.emitter.emit("No bait found on the image!")
-
-		return center
-
-	def binarize_background_model(self, img):
-		return self.background_model.apply(img, learningRate=0.0)
-
 	def display_bait(self, bait_mask, bait_rgb=None):
 		self.UI.binary_image_widget.emitter.emit(np.rot90(bait_mask * 255, k=3))
 		if bait_rgb is not None:
 			self.UI.rgb_image_widget.emitter.emit(np.rot90(bait_rgb, k=3))
 
-	def display_signals(self, signals):
-		self.UI.score_signal_viewer.emitter.emit(signals)
+	def display_signals(self, signals, widget):
+		self.UI.__getattribute__(widget).emitter.emit(signals)
 
 
 if __name__ == "__main__":

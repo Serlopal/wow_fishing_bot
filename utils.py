@@ -96,10 +96,18 @@ def distance(p1, p2):
 
 
 def get_window(window_name):
-	try:
-		return win32gui.GetWindowRect(win32gui.FindWindow(None, window_name))
-	except:
+	def find_wow_window(hwnd, ctx):
+		if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd) == window_name:
+			wow_window_handle.append(hwnd)
+
+	wow_window_handle = []
+	win32gui.EnumWindows(find_wow_window, None)
+
+	if wow_window_handle:
+		return win32gui.GetWindowRect(wow_window_handle[0])
+	else:
 		return False
+
 
 
 def check_process(wow_name):

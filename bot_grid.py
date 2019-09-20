@@ -319,7 +319,6 @@ class WowFishingBotUI:
 
 		process_running = utils.check_process(self.game_process_name.edit.text())
 		window = utils.get_window(self.window_name.edit.text())
-		print(self.window_name.edit.text())
 
 		# check Wow is running
 		if process_running and window:
@@ -490,13 +489,6 @@ class WowFishingBot:
 		self.frame = frame
 		# dimension of the window that will encapsulate the bait
 		self.bait_window = int(frame[3] / 5)
-
-	@staticmethod
-	def grayscale(image):
-		if len(image.shape) > 2 and image.shape[2] == 4:
-			# convert the image from RGBA2RGB
-			image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
-		return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
 	@staticmethod
 	def process_bait(img):

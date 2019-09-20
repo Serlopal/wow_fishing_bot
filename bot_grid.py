@@ -21,7 +21,7 @@ from scipy.stats import linregress
 from collections import deque
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
-pyautogui.PAUSE = 0.001
+pyautogui.PAUSE = 0.0001
 pyautogui.FAILSAFE = False
 
 
@@ -169,7 +169,7 @@ class WowFishingBotUI:
 		self.binary_image_widget = None
 		self.rgb_image_widget = None
 		self.background_model = None
-		self.diff_signal_viewer = None
+		self.score_signal_viewer = None
 		self.slope_signal_viewer = None
 		self.post_detection_sleep_edit = None
 		self.slope_samples_edit = None
@@ -266,8 +266,8 @@ class WowFishingBotUI:
 		layout.addWidget(self.rgb_image_widget, 14, 1, 5, 1)
 
 		# signal display
-		self.diff_signal_viewer = QSignalViewer(1, yrange=(0, 500))
-		layout.addWidget(self.diff_signal_viewer, 20, 0, 5, 1)
+		self.score_signal_viewer = QSignalViewer(2, None)
+		layout.addWidget(self.score_signal_viewer, 20, 0, 5, 1)
 
 		self.slope_signal_viewer = QSignalViewer(1, yrange=(0, 10))
 		layout.addWidget(self.slope_signal_viewer, 20, 1, 5, 1)
@@ -382,69 +382,50 @@ class WowFishingBot:
 				  	   'width': self.bait_window,
 					   'height': self.bait_window}
 
-		diff_buffer = []
-		slope_samples_number = int(self.UI.slope_samples_edit.edit.text())
-		slope_buffer = []
-
-		stats_time = 2
-		first = True
+		score_buffer = []
 		std_scale = float(self.UI.bait_mov_sensibility_edit.edit.text())
-		# pass_centroid = np.zeros(2)
-		# pass_contour = None
-		pass_bait = None
 
 		self.UI.log_viewer.emitter.emit("watching float...")
+
+		fishing_time = 30
+		mask_stats_time = 1
+		score_stats_time = 1
+		watch_bait_time = fishing_time - mask_stats_time - score_stats_time
+
+		# ---- GET BAIT MASK ------
+		acc_mask = np.ones_like(self.get_bait_mask(bait_window)).astype('int')
 		t = time.time()
+		while time.time() - t < mask_stats_time:
+			current_bait = self.get_bait_mask(bait_window).astype('int')
+			self.display_bait(current_bait, None)
+			acc_mask += current_bait
 
-		# start looping
+		# ---- ESTIMATE DISTRIBUTION OF NORMAL NO FISH SCORES ------
+		t = time.time()
+		while time.time() - t < score_stats_time:
+			current_bait = self.get_bait_mask(bait_window).astype('int')
+			self.display_bait(current_bait, None)
+			score = np.sum(np.divide(current_bait, acc_mask))
+			score_buffer.append(score)
+		score_threshold = np.mean(score_buffer) + std_scale * np.std(score_buffer)
 
-		bait_image = np.array(self.sct.grab(bait_window))
-		current_bait = self.process_bait(bait_image)
-
-		while time.time() - t < 30:  # fishing process takes 30 secs
-			# current_centroid = self.compute_centroid(current_bait.astype('uint8'))
-			# current_contour = self.compute_contour(current_bait.astype('uint8'))
-
-			if not first:
-				# diff = np.linalg.norm(current_centroid-pass_centroid)
-				# diff = cv2.matchShapes(current_contour, pass_contour, 1, 0.0)
-				# diff = np.correlate(current_bait.flatten(), bait_prior.flatten())
-				# diff = np.count_nonzero(current_bait == bait_prior)
-				diff = np.sum(np.multiply(current_bait, pass_bait))
-
-				diff_buffer.append(diff)
-
-				if len(diff_buffer) >= slope_samples_number:
-					slope = np.abs(linregress(np.arange(slope_samples_number), diff_buffer[-slope_samples_number:]).slope)
-					slope_buffer.append(slope)
-					slope_threshold = np.mean(slope_buffer) + std_scale * np.std(slope_buffer)
-
-					self.UI.diff_signal_viewer.emitter.emit(diff)
-					self.UI.slope_signal_viewer.emitter.emit(slope)
-
-					if time.time() - t > stats_time and slope > slope_threshold:
-						time.sleep(float(self.UI.post_detection_sleep_edit.edit.text()))
-						pyautogui.rightClick()
-						self.UI.log_viewer.emitter.emit("tried to capture fish")
-						time.sleep(0.2)
-						self.UI.log_viewer.emitter.emit("looting the fish...")
-						self.loot()
-						break
-
-			# new is now old
-			# pass_centroid = current_centroid
-			# pass_contour = current_contour
-			pass_bait = current_bait
-
-			# grab a new frame
+		# ---- WATCH BAIT FOR FISH ------
+		while time.time() - t < watch_bait_time:
 			bait_image = np.array(self.sct.grab(bait_window))
 			current_bait = self.process_bait(bait_image)
+			score = np.sum(np.divide(current_bait, acc_mask))
 
-			# plot
-			self.UI.binary_image_widget.emitter.emit(np.rot90(current_bait * 255, k=3))
-			self.UI.rgb_image_widget.emitter.emit(np.rot90(bait_image, k=3))
+			if score > score_threshold:
+				time.sleep(float(self.UI.post_detection_sleep_edit.edit.text()))
+				pyautogui.rightClick()
+				self.UI.log_viewer.emitter.emit("tried to capture fish")
+				time.sleep(0.2)
+				self.UI.log_viewer.emitter.emit("looting the fish...")
+				self.loot()
+				break
 
-			first = False
+			self.display_bait(current_bait, bait_image)
+			self.display_signals([score, score_threshold])
 
 	def fish_grid(self):
 		if self.dead_UI:
@@ -490,6 +471,9 @@ class WowFishingBot:
 		# dimension of the window that will encapsulate the bait
 		self.bait_window = int(frame[3] / 5)
 
+	def get_bait_mask(self, w):
+		return self.process_bait(np.array(self.sct.grab(w)))
+
 	@staticmethod
 	def process_bait(img):
 		# return utils.binarize_kmeans(cv2.GaussianBlur(img, (51, 51), 3))
@@ -522,6 +506,14 @@ class WowFishingBot:
 
 	def binarize_background_model(self, img):
 		return self.background_model.apply(img, learningRate=0.0)
+
+	def display_bait(self, bait_mask, bait_rgb=None):
+		self.UI.binary_image_widget.emitter.emit(np.rot90(bait_mask * 255, k=3))
+		if bait_rgb is not None:
+			self.UI.rgb_image_widget.emitter.emit(np.rot90(bait_rgb, k=3))
+
+	def display_signals(self, signals):
+		self.UI.score_signal_viewer.emitter.emit(signals)
 
 
 if __name__ == "__main__":

@@ -1,32 +1,29 @@
-import cv2
 import pyautogui
 import numpy as np
 import win32gui
-import sys
 from mss import mss
 import time
 import utils
-from threading import Thread
 import os
-from PyQt5.QtWidgets import QApplication, QGridLayout, QTextEdit, QMainWindow, QGroupBox, QAction, QDialog, QListWidget, \
-QSizePolicy, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCheckBox, QGraphicsView, QGraphicsScene, QVBoxLayout
+from PyQt5.QtWidgets import QApplication, QGridLayout, QTextEdit, QMainWindow, QGroupBox, \
+	QHBoxLayout, QLabel, QLineEdit, QPushButton, QCheckBox
 from PyQt5.QtCore import pyqtSignal, QThread, QRectF
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-
 from PyQt5.QtGui import QFont
 import pyqtgraph as pg
 import keyboard
-from matplotlib import pyplot as plt
 from scipy.stats import linregress
 from collections import deque
 
+pg.setConfigOption('background', 'w')
+
+# suppress warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
 pyautogui.PAUSE = 0.0001
 pyautogui.FAILSAFE = False
 
 
 def monotonically_increasing(a):
-    return np.all(a[1:] >= a[:-1], axis=0)
+	return np.all(a[1:] >= a[:-1], axis=0)
 
 
 class Log(QTextEdit):
@@ -127,7 +124,7 @@ class QSignalViewer(pg.PlotWidget):
 		# create curves for the signals
 		self.curves = []
 		for i in range(self.nplots):
-			c = pg.PlotCurveItem(pen=(i, self.nplots * 1.3))
+			c = pg.PlotCurveItem(pen=pg.mkPen((i, self.nplots * 1.3), width=3))
 			self.addItem(c)
 			self.curves.append(c)
 
@@ -185,6 +182,7 @@ class WowFishingBotUI:
 		self.app = QApplication(["WowFishingBotUI"])
 		self.window = QMainWindow()
 		self.window.setGeometry(1100, 50, 800, 900)
+		self.window.setWindowTitle("WOW fishing bot")
 
 		# create central widget and layout
 		central_widget = QGroupBox()
@@ -192,39 +190,34 @@ class WowFishingBotUI:
 
 		# CONTROLS AND TOGGLES
 		# edit to change games process name
-		self.game_process_name = LabeledLineEdit("WoW's process name: ", "Wow.exe")
+		self.game_process_name = LabeledLineEdit("WOW process name: ", "Wow.exe")
 		layout.addWidget(self.game_process_name, 0, 0, 1, 1)
 		# edit to change games window name
-		self.window_name = LabeledLineEdit("WoW's window name: ", "World of Warcraft")
+		self.window_name = LabeledLineEdit("WOW window name: ", "World of Warcraft")
 		layout.addWidget(self.window_name, 0, 1, 1, 1)
-
-		# button to try to find the process from the line edit
-		self.find_wow_button = QPushButton("Find WOW!")
-		self.find_wow_button.clicked.connect(self.find_wow)
-		layout.addWidget(self.find_wow_button, 0, 2, 1, 1)
 
 		# fishing key
 		self.fish_key_edit = LabeledLineEdit("Fishing key:", "0")
 		layout.addWidget(self.fish_key_edit, 2, 0, 1, 1)
 
 		# fishing wait time
-		self.fishing_wait_time_edit = LabeledLineEdit("Waiting time before starting to fish", "4")
-		layout.addWidget(self.fishing_wait_time_edit, 2, 1, 1, 2)
+		self.fishing_wait_time_edit = LabeledLineEdit("Fishing start delay", "4")
+		layout.addWidget(self.fishing_wait_time_edit, 2, 1, 1, 1)
 
 		# looting coordinates
-		self.loot_coords_edit = LabeledLineEdit("Relative looting coords from to left corner", "0.048 0.31")
+		self.loot_coords_edit = LabeledLineEdit("Looting coords", "0.048 0.31")
 		layout.addWidget(self.loot_coords_edit, 3, 0, 1, 1)
 
 		# looting delta
-		self.loot_delta_edit = LabeledLineEdit("Vertical looting delta between objects", "0.03")
+		self.loot_delta_edit = LabeledLineEdit("Vertical looting delta", "0.03")
 		layout.addWidget(self.loot_delta_edit, 3, 1, 1, 1)
 
 		# bait movement sensibility (in standard deviations)
-		self.bait_mov_sensibility_edit = LabeledLineEdit("Bait movement sensibility (in stds)", "4")
+		self.bait_mov_sensibility_edit = LabeledLineEdit("Bait movement sensibility", "4")
 		layout.addWidget(self.bait_mov_sensibility_edit, 4, 0, 1, 1)
 
 		# bait movement sensibility (in standard deviations)
-		self.post_detection_sleep_edit = LabeledLineEdit("Time to sleep after detection", "0.0")
+		self.post_detection_sleep_edit = LabeledLineEdit("Post-detection sleep time", "0.0")
 		layout.addWidget(self.post_detection_sleep_edit, 4, 1, 1, 1)
 
 		# bait movement sensibility (in standard deviations)
@@ -235,42 +228,41 @@ class WowFishingBotUI:
 		self.fish_button = QPushButton("Fish")
 		self.fish_button.clicked.connect(self.start_fishing)
 		self.fish_button.setEnabled(False)
-		layout.addWidget(self.fish_button, 5, 1, 1, 2)
+		layout.addWidget(self.fish_button, 6, 1, 1, 1)
+
+		# button to try to find the process from the line edit
+		self.find_wow_button = QPushButton("Find WOW!")
+		self.find_wow_button.clicked.connect(self.find_wow)
+		layout.addWidget(self.find_wow_button, 6, 0, 1, 1)
 
 		# toggle for loop fishing
 		self.auto_fish_toggle = QCheckBox("Auto pilot")
 		self.auto_fish_toggle.setChecked(True)
-		layout.addWidget(self.auto_fish_toggle, 6, 0, 1, 1)
+		layout.addWidget(self.auto_fish_toggle, 7, 0, 1, 1)
 
 		# warning label with hotkey to stop fishing
 		self.stop_fishing_label = DynamicLabel("Jump to stop fishing")
 		self.stop_fishing_label.setFont(QFont("Times", 12, QFont.Bold))
 		self.stop_fishing_label.setStyleSheet("color: red;")
 		self.stop_fishing_label.setVisible(False)
-		layout.addWidget(self.stop_fishing_label, 7, 0, 1, 3)
+		layout.addWidget(self.stop_fishing_label, 8, 0, 1, 3)
 
 		# label with the number of captures
 		self.tries_count_label = DynamicLabel("0 tries")
 		self.tries_count_label.setFont(QFont("Times", 24, QFont.Bold))
 		self.tries_count_label.setStyleSheet("color: red;")
-		layout.addWidget(self.tries_count_label, 8, 0, 1, 3)
+		layout.addWidget(self.tries_count_label, 9, 0, 1, 3)
 
 		# LOG FROM BOT ACTIVITY
 		self.log_viewer = Log()
-		layout.addWidget(self.log_viewer, 11, 0, 3, 10)
+		layout.addWidget(self.log_viewer, 12, 0, 3, 2)
 
 		# image display
 		self.binary_image_widget = QImshow()
-		layout.addWidget(self.binary_image_widget, 14, 0, 5, 1)
-		self.rgb_image_widget = QImshow()
-		layout.addWidget(self.rgb_image_widget, 14, 1, 5, 1)
-
-		# signal display
-		self.score_signal_viewer = QSignalViewer(1, None)
-		layout.addWidget(self.score_signal_viewer, 20, 0, 5, 1)
+		layout.addWidget(self.binary_image_widget, 15, 0, 5, 1)
 
 		self.slope_signal_viewer = QSignalViewer(2, None)
-		layout.addWidget(self.slope_signal_viewer, 20, 1, 5, 1)
+		layout.addWidget(self.slope_signal_viewer, 15, 1, 5, 1)
 
 		central_widget.setLayout(layout)
 		self.window.setCentralWidget(central_widget)
@@ -374,7 +366,7 @@ class WowFishingBot:
 		# capturing of the float window
 		bait_window = {'top': int(bait_coords[1] - self.bait_window / 2),
 					   'left': int(bait_coords[0] - self.bait_window / 2),
-				  	   'width': self.bait_window,
+					   'width': self.bait_window,
 					   'height': self.bait_window}
 
 		slope_samples_number = int(self.UI.slope_samples_edit.edit.text())
@@ -395,16 +387,15 @@ class WowFishingBot:
 		t = time.time()
 		while time.time() - t < mask_stats_time:
 			current_bait = self.get_bait_mask(bait_window).astype('int')
-			self.display_bait(current_bait, None)
+			self.display_bait_mask(current_bait)
 			acc_mask += current_bait
 
 		# ---- ESTIMATE DISTRIBUTION OF NORMAL NO FISH SCORES ------
 		t = time.time()
 		while time.time() - t < score_stats_time:
 			current_bait = self.get_bait_mask(bait_window).astype('int')
-			self.display_bait(current_bait, None)
+			self.display_bait_mask(current_bait)
 			score = np.sum(np.divide(current_bait, acc_mask))
-			self.display_signals([score], widget="score_signal_viewer")
 			score_buffer.append(score)
 			if len(score_buffer) >= slope_samples_number:
 				slope_buffer.append(np.abs(linregress(np.arange(slope_samples_number), score_buffer).slope))
@@ -429,9 +420,8 @@ class WowFishingBot:
 					self.loot()
 					break
 
-				self.display_bait(current_bait, bait_image)
-				self.display_signals([score], widget="score_signal_viewer")
-				self.display_signals([slope, slope_threshold], widget="slope_signal_viewer")
+				self.display_bait_mask(current_bait)
+				self.display_trigger_signal([slope, slope_threshold])
 
 	def fish_grid(self):
 		if self.dead_UI:
@@ -482,18 +472,14 @@ class WowFishingBot:
 
 	@staticmethod
 	def process_bait(img):
-		# return utils.binarize_kmeans(cv2.GaussianBlur(img, (51, 51), 3))
 		return utils.binarize_canny(img)
 
-	def display_bait(self, bait_mask, bait_rgb=None):
+	def display_bait_mask(self, bait_mask):
 		self.UI.binary_image_widget.emitter.emit(np.rot90(bait_mask * 255, k=3))
-		if bait_rgb is not None:
-			self.UI.rgb_image_widget.emitter.emit(np.rot90(bait_rgb, k=3))
 
-	def display_signals(self, signals, widget):
-		self.UI.__getattribute__(widget).emitter.emit(signals)
+	def display_trigger_signal(self, signals):
+		self.UI.slope_signal_viewer.emitter.emit(signals)
 
 
 if __name__ == "__main__":
 	botUI = WowFishingBotUI()
-	print("asd")

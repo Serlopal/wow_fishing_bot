@@ -3,9 +3,6 @@ import pyautogui
 import numpy as np
 import psutil
 import win32gui
-import win32api, win32con
-import time
-from skimage.segmentation import slic
 
 
 def binarize_canny(image):

@@ -112,3 +112,32 @@ python bot_grid.py
 
 
 ## In-app configuration
+
+There are many tweakable parameters that can be modified through the UI. These paramenters are
+important because in challenging fishing conditions you may have to modify them to achieve a better
+fishing success rate or even fish anything at all!
+
+
+
+- **WOW process name**: The name of the computer process of the game. (can be checked using the task manager)
+- **WOW window name**: Name of the WOW window
+- **Fishing key**: Key associated inside the game with the fishing command
+- **Fishing start delay**: Amount of time (in seconds) to wait from the moment the Fish button is clicked to the
+moment the fishing command is issued.
+- **Looting coords**: relative looting coords with respect to the height and width of the WOW window, taken from the
+top left corner of the window.
+- **Vertical looting delta**: Amount of vertical displacement in between different objected to be looted.
+There should not be any need to change this really.
+- **Bait movement sensibility**: In number of standard deviations. 3 standard deviations account for a 95%
+confidence interval.
+- **Post detection sleep time**: Amount of time, in seconds, to wait once we have detected the fish has taken
+the bait until we click on the float. There should not be any need to change this.
+- **Slope estimation samples**: Number of score samples in a row to use for the slope estimation that we use
+to trigger the clicking event.
+- **Autopilot**: Whether if to fish once or do it forever in a loop. This should usually always we ticked.
+
+Once these parameters are tweaked, the user only has to click the **Find WOW!** button and then clicking
+**Fish** to start fishing.
+
+
+

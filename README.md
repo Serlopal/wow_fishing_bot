@@ -113,6 +113,9 @@ python bot_grid.py
 
 ## In-app configuration
 
+![alt text](media/ui_sample.PNG)
+
+
 There are many tweakable parameters that can be modified through the UI. These paramenters are
 important because in challenging fishing conditions you may have to modify them to achieve a better
 fishing success rate or even fish anything at all!
@@ -139,5 +142,11 @@ to trigger the clicking event.
 Once these parameters are tweaked, the user only has to click the **Find WOW!** button and then clicking
 **Fish** to start fishing.
 
+
+Below these two buttons we have the autopilot checkbox, and then a count of the number of tries per execution.
+Under the counter we have a log that gives the user general information about the working process of the algorithm,
+and finally at the bottom we have to live plots: the first represents the binary mask of the float, while the 
+second represents in red the live slope calculation and the blue represents the slope threshold. When the red
+line surpasses the blue, we will assume the fish has taken the bait!
 
 

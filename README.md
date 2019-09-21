@@ -132,11 +132,13 @@ top left corner of the window.
 - **Vertical looting delta**: Amount of vertical displacement in between different objected to be looted.
 There should not be any need to change this really.
 - **Bait movement sensibility**: In number of standard deviations. 3 standard deviations account for a 95%
-confidence interval.
+confidence interval. The higher this value the lower the sensibility, that is, the more difficult to consider
+a sample as an outlier.
 - **Post detection sleep time**: Amount of time, in seconds, to wait once we have detected the fish has taken
 the bait until we click on the float. There should not be any need to change this.
 - **Slope estimation samples**: Number of score samples in a row to use for the slope estimation that we use
-to trigger the clicking event.
+to trigger the clicking event. A higher number will give us a more stable slope (red) signal, but more delay
+when triggering a click, so a balance must be found.
 - **Autopilot**: Whether if to fish once or do it forever in a loop. This should usually always we ticked.
 
 Once these parameters are tweaked, the user only has to click the **Find WOW!** button and then clicking

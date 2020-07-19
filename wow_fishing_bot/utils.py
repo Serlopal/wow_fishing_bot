@@ -4,11 +4,6 @@ import numpy as np
 import psutil
 import win32gui
 
-
-def binarize_canny(image):
-	return cv2.morphologyEx(cv2.Canny(image, 100, 200), cv2.MORPH_CLOSE, kernel=np.ones((5, 5), np.uint8))
-
-
 def get_window(window_name):
 	def find_wow_window(hwnd, ctx):
 		if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd) == window_name:

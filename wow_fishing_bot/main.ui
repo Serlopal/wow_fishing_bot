@@ -22,8 +22,8 @@
      <rect>
       <x>10</x>
       <y>20</y>
-      <width>281</width>
-      <height>91</height>
+      <width>301</width>
+      <height>71</height>
      </rect>
     </property>
     <property name="font">
@@ -35,29 +35,6 @@
      <string>Start fishing</string>
     </property>
    </widget>
-   <widget class="QWidget" name="horizontalLayoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>10</x>
-      <y>190</y>
-      <width>301</width>
-      <height>171</height>
-     </rect>
-    </property>
-    <layout class="QHBoxLayout" name="horizontalLayout">
-     <item>
-      <widget class="QLCDNumber" name="tries_digital_counter">
-       <property name="font">
-        <font>
-         <pointsize>22</pointsize>
-         <weight>50</weight>
-         <bold>false</bold>
-        </font>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </widget>
    <widget class="QLabel" name="stop_fishing_label">
     <property name="enabled">
      <bool>true</bool>
@@ -65,7 +42,7 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>130</y>
+      <y>110</y>
       <width>301</width>
       <height>71</height>
      </rect>
@@ -86,9 +63,9 @@
     <property name="geometry">
      <rect>
       <x>20</x>
-      <y>370</y>
+      <y>320</y>
       <width>1011</width>
-      <height>381</height>
+      <height>431</height>
      </rect>
     </property>
     <property name="font">
@@ -498,186 +475,291 @@
      <attribute name="title">
       <string>Watch bait</string>
      </attribute>
+     <widget class="QGroupBox" name="groupBox_3">
+      <property name="geometry">
+       <rect>
+        <x>230</x>
+        <y>10</y>
+        <width>251</width>
+        <height>381</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>signal processing</string>
+      </property>
+      <widget class="QWidget" name="gridLayoutWidget_6">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>30</y>
+         <width>231</width>
+         <height>161</height>
+        </rect>
+       </property>
+       <layout class="QGridLayout" name="gridLayout_6">
+        <item row="3" column="0">
+         <widget class="QLabel" name="label_12">
+          <property name="text">
+           <string>Bait window height</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_8">
+          <property name="text">
+           <string>Moving avg. samples</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_9">
+          <property name="text">
+           <string>N std outlier detection</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_11">
+          <property name="text">
+           <string>Bait window width</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="moving_avg_samples_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QSpinBox" name="num_std_outlier_detection_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QSpinBox" name="bait_window_width_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QSpinBox" name="bait_window_height_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+     <widget class="QGroupBox" name="groupBox_2">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>10</y>
+        <width>211</width>
+        <height>381</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>image processing</string>
+      </property>
+      <property name="flat">
+       <bool>false</bool>
+      </property>
+      <widget class="QWidget" name="gridLayoutWidget_5">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>30</y>
+         <width>181</width>
+         <height>201</height>
+        </rect>
+       </property>
+       <layout class="QGridLayout" name="gridLayout_5">
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="canny_th1_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QSpinBox" name="dilate_iters_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_16">
+          <property name="text">
+           <string>Dilate kernel X</string>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="0">
+         <widget class="QLabel" name="label_19">
+          <property name="text">
+           <string>Flood fill</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QSpinBox" name="dilate_kernelX_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="1" alignment="Qt::AlignHCenter">
+         <widget class="QCheckBox" name="flood_fill_checkbox">
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="0">
+         <widget class="QLabel" name="label_18">
+          <property name="text">
+           <string>N largest comp.</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="label_17">
+          <property name="text">
+           <string>Dilate iters.</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_15">
+          <property name="text">
+           <string>Canny th. 2</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_14">
+          <property name="text">
+           <string>Canny th. 1</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QSpinBox" name="canny_th2_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QSpinBox" name="n_largest_component_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="label_20">
+          <property name="text">
+           <string>Dilate kernel Y</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QSpinBox" name="dilate_kernelY_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="gridLayoutWidget_4">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>280</y>
+         <width>178</width>
+         <height>97</height>
+        </rect>
+       </property>
+       <layout class="QGridLayout" name="gridLayout_4">
+        <item row="1" column="1" alignment="Qt::AlignHCenter">
+         <widget class="QLabel" name="label_5">
+          <property name="text">
+           <string>+</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QSpinBox" name="bait_window_offset_left_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="bait_window_offset_top_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="2">
+         <widget class="QSpinBox" name="bait_window_offset_right_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QSpinBox" name="bait_window_offset_bottom_spinbox">
+          <property name="maximum">
+           <number>300</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QLabel" name="label_13">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>240</y>
+         <width>137</width>
+         <height>37</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>bait window offset</string>
+       </property>
+      </widget>
+     </widget>
      <widget class="GraphicsLayoutWidget" name="binary_bait_view">
       <property name="geometry">
        <rect>
-        <x>320</x>
-        <y>10</y>
-        <width>331</width>
-        <height>251</height>
+        <x>490</x>
+        <y>20</y>
+        <width>251</width>
+        <height>191</height>
        </rect>
       </property>
      </widget>
      <widget class="PlotWidget" name="slope_signal_viewer">
       <property name="geometry">
        <rect>
-        <x>660</x>
-        <y>10</y>
-        <width>341</width>
-        <height>251</height>
-       </rect>
-      </property>
-     </widget>
-     <widget class="QWidget" name="gridLayoutWidget_2">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>10</y>
-        <width>301</width>
+        <x>750</x>
+        <y>20</y>
+        <width>251</width>
         <height>191</height>
        </rect>
-      </property>
-      <layout class="QGridLayout" name="gridLayout_2">
-       <item row="5" column="0">
-        <widget class="QSlider" name="bait_window_width_slider">
-         <property name="maximum">
-          <number>300</number>
-         </property>
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="0">
-        <widget class="QSlider" name="bait_sensibility_slider">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="1">
-        <widget class="QLabel" name="slope_estimation_sample_slider_label">
-         <property name="text">
-          <string>0</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="1">
-        <widget class="QLabel" name="bait_sensiblity_slider_2">
-         <property name="text">
-          <string>0</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="0">
-        <widget class="QSlider" name="slope_estimation_samples_slider">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="0">
-        <widget class="QLabel" name="label_11">
-         <property name="text">
-          <string>Bait window width</string>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="0">
-        <widget class="QLabel" name="label_12">
-         <property name="text">
-          <string>Bait window height</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_9">
-         <property name="text">
-          <string>Bait movement sensibility</string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="0">
-        <widget class="QLabel" name="label_8">
-         <property name="text">
-          <string>Slope estimation samples</string>
-         </property>
-        </widget>
-       </item>
-       <item row="5" column="1">
-        <widget class="QLabel" name="bait_sensiblity_slider_3">
-         <property name="text">
-          <string>0</string>
-         </property>
-        </widget>
-       </item>
-       <item row="7" column="0">
-        <widget class="QSlider" name="bait_window_height_slider">
-         <property name="maximum">
-          <number>300</number>
-         </property>
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="7" column="1">
-        <widget class="QLabel" name="bait_sensiblity_slider_4">
-         <property name="text">
-          <string>0</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="gridLayoutWidget_4">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>240</y>
-        <width>178</width>
-        <height>97</height>
-       </rect>
-      </property>
-      <layout class="QGridLayout" name="gridLayout_4">
-       <item row="1" column="1" alignment="Qt::AlignHCenter">
-        <widget class="QLabel" name="label_5">
-         <property name="text">
-          <string>+</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="0">
-        <widget class="QSpinBox" name="bait_window_offset_left_spinbox">
-         <property name="maximum">
-          <number>300</number>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="1">
-        <widget class="QSpinBox" name="bait_window_offset_top_spinbox">
-         <property name="maximum">
-          <number>300</number>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="2">
-        <widget class="QSpinBox" name="bait_window_offset_right_spinbox">
-         <property name="maximum">
-          <number>300</number>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="1">
-        <widget class="QSpinBox" name="bait_window_offset_bottom_spinbox">
-         <property name="maximum">
-          <number>300</number>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QLabel" name="label_13">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>200</y>
-        <width>137</width>
-        <height>37</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>bait window offset</string>
       </property>
      </widget>
     </widget>
@@ -771,9 +853,6 @@
          </property>
         </widget>
        </item>
-       <item row="0" column="1">
-        <widget class="QLineEdit" name="fishing_wait_time_edit"/>
-       </item>
        <item row="1" column="0">
         <widget class="QLabel" name="label_2">
          <property name="text">
@@ -783,6 +862,13 @@
        </item>
        <item row="1" column="1">
         <widget class="QLineEdit" name="fishing_hotkey_edit"/>
+       </item>
+       <item row="0" column="1">
+        <widget class="QSpinBox" name="fishing_wait_time_spinbox">
+         <property name="maximum">
+          <number>300</number>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -794,8 +880,25 @@
       <x>320</x>
       <y>20</y>
       <width>711</width>
-      <height>341</height>
+      <height>291</height>
      </rect>
+    </property>
+   </widget>
+   <widget class="QLCDNumber" name="tries_digital_counter">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>198</y>
+      <width>301</width>
+      <height>111</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>22</pointsize>
+      <weight>50</weight>
+      <bold>false</bold>
+     </font>
     </property>
    </widget>
   </widget>
@@ -916,38 +1019,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>slope_estimation_samples_slider</sender>
-   <signal>valueChanged(int)</signal>
-   <receiver>slope_estimation_sample_slider_label</receiver>
-   <slot>setNum(int)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>82</x>
-     <y>502</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>327</x>
-     <y>499</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>bait_sensibility_slider</sender>
-   <signal>valueChanged(int)</signal>
-   <receiver>bait_sensiblity_slider_2</receiver>
-   <slot>setNum(int)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>82</x>
-     <y>552</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>328</x>
-     <y>552</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>grid_travelling_speed_slider</sender>
    <signal>valueChanged(int)</signal>
    <receiver>label99_6</receiver>
@@ -976,38 +1047,6 @@
     <hint type="destinationlabel">
      <x>260</x>
      <y>643</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>bait_window_width_slider</sender>
-   <signal>valueChanged(int)</signal>
-   <receiver>bait_sensiblity_slider_3</receiver>
-   <slot>setNum(int)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>227</x>
-     <y>601</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>330</x>
-     <y>613</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>bait_window_height_slider</sender>
-   <signal>valueChanged(int)</signal>
-   <receiver>bait_sensiblity_slider_4</receiver>
-   <slot>setNum(int)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>227</x>
-     <y>674</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>330</x>
-     <y>665</y>
     </hint>
    </hints>
   </connection>

@@ -20,6 +20,7 @@ import keyboard
 import mouse
 from scipy.stats import linregress
 from collections import deque
+import cv2
 
 pg.setConfigOption('background', 'w')
 
@@ -73,30 +74,19 @@ class WowFishingBot:
 
             pyautogui.click()
 
-    def watch_bait(self, bait_coords):
-        # apply offset to baitcoords
-        bait_coords[0] += self.bait_window_offset_right - self.bait_window_offset_left
-        bait_coords[1] += self.bait_window_offset_bottom - self.bait_window_offset_top
-
-        # capturing of the float window
-        bait_window = {'top': int(bait_coords[1] - self.bait_window_height / 2),
-                       'left': int(bait_coords[0] - self.bait_window_width / 2),
-                       'width': self.bait_window_width,
-                       'height': self.bait_window_height}
-
-        slope_samples_number = int(self.slope_estimation_samples)
-        score_buffer = deque(maxlen=slope_samples_number)
-        slope_buffer = []
-        std_scale = self.bait_sensibility # float(self.UI.bait_mov_sensibility_edit.edit.text())
-
-        self.UI.log_viewer.emitter.emit("watching float...")
-
-        fishing_time = 30
-        mask_stats_time = 2
-        score_stats_time = 2
-        watch_bait_time = fishing_time - mask_stats_time - score_stats_time
-
+    def watch_bait(self, bait_window):
         # ---- GET BAIT MASK ------
+        acc_mask = self.get_bait_heatmap(bait_window)
+
+        # ---- ESTIMATE DISTRIBUTION OF NORMAL NO FISH SCORES ------
+        slope_threshold = self.estimate_slope_threshold(bait_window, acc_mask)
+
+        # ---- WATCH BAIT FOR FISH ------
+        self._watch_bait(bait_window, acc_mask, slope_threshold)
+
+    def get_bait_heatmap(self, bait_window):
+        mask_stats_time = 2
+
         acc_mask = np.ones_like(self.get_bait_mask(bait_window)).astype('int')
         t = time.time()
         while time.time() - t < mask_stats_time:
@@ -104,29 +94,38 @@ class WowFishingBot:
             self.display_bait_mask(current_bait)
             acc_mask += current_bait
 
-        # ---- ESTIMATE DISTRIBUTION OF NORMAL NO FISH SCORES ------
+        return acc_mask
+
+    def estimate_slope_threshold(self, bait_window, acc_mask):
+        slope_buffer = []
+        score_buffer = deque(maxlen=self.moving_avg_samples)
+        score_stats_time = 2
+
         t = time.time()
         while time.time() - t < score_stats_time:
             current_bait = self.get_bait_mask(bait_window).astype('int')
             self.display_bait_mask(current_bait)
-            score = np.sum(np.divide(current_bait, acc_mask))
+            score = np.sum(np.multiply(current_bait, acc_mask))
             score_buffer.append(score)
-            if len(score_buffer) >= slope_samples_number:
-                slope_buffer.append(np.abs(linregress(np.arange(slope_samples_number), score_buffer).slope))
-        slope_threshold = np.mean(slope_buffer) + std_scale * np.std(slope_buffer)
+            if len(score_buffer) >= score_buffer.maxlen:
+                slope_buffer.append(np.abs(linregress(np.arange(score_buffer.maxlen), score_buffer).slope))
 
-        # ---- WATCH BAIT FOR FISH ------
-        score_buffer.clear()
+        return np.mean(slope_buffer) + self.num_std_outlier_detection * np.std(slope_buffer)
+
+    def _watch_bait(self, bait_window, acc_mask, slope_threshold):
+        watch_bait_time = 26
+        score_buffer = deque(maxlen=self.moving_avg_samples)
+
+        t = time.time()
         while time.time() - t < watch_bait_time:
             bait_image = np.array(self.sct.grab(bait_window))
             current_bait = self.process_bait(bait_image)
-            score = np.sum(np.divide(current_bait, acc_mask))
+            score = np.sum(np.multiply(current_bait, acc_mask))
             score_buffer.append(score)
 
-            if len(score_buffer) >= slope_samples_number:
-                slope = np.abs(linregress(np.arange(slope_samples_number), score_buffer).slope)
+            if len(score_buffer) >= score_buffer.maxlen:
+                slope = np.abs(linregress(np.arange(score_buffer.maxlen), score_buffer).slope)
                 if slope > slope_threshold:
-                    time.sleep(4)
                     pyautogui.rightClick()
                     self.UI.log_viewer.emitter.emit("tried to capture fish")
                     time.sleep(0.2)
@@ -147,10 +146,10 @@ class WowFishingBot:
         found = False
         bait_coords = None
 
-        a = int(self.frame[1] + self.frame[3] * self.grid_top_padding*0.01)
-        b = int(self.frame[1] + self.frame[3] * (1 - self.grid_bottom_padding*0.01))
-        c = int(self.frame[0] + self.frame[2] * self.grid_left_padding*0.01)
-        d = int(self.frame[0] + self.frame[2] * (1 - self.grid_right_padding*0.01))
+        a = int(self.frame[1] + self.frame[3] * self.grid_top_padding)
+        b = int(self.frame[1] + self.frame[3] * (1 - self.grid_bottom_padding))
+        c = int(self.frame[0] + self.frame[2] * self.grid_left_padding)
+        d = int(self.frame[0] + self.frame[2] * (1 - self.grid_right_padding))
 
         for j in range(a, b, grid_step):
             if found:
@@ -170,11 +169,25 @@ class WowFishingBot:
                     bait_coords = [i, j]
                     break
         if bait_coords is not None:
-            self.watch_bait(bait_coords)
+            self.print_to_log("watching bait...")
+            self.watch_bait(self.get_bait_window(bait_coords))
 
         self.tries += 1
         self.UI.tries_digital_counter.display(str(self.tries))
         self.jump()
+
+    def get_bait_window(self, bait_coords):
+        # apply offset to baitcoords
+        bait_coords[0] += self.bait_window_offset_right - self.bait_window_offset_left
+        bait_coords[1] += self.bait_window_offset_bottom - self.bait_window_offset_top
+
+        # put together window containing the bait
+        bait_window = {'top': int(bait_coords[1] - self.bait_window_height / 2),
+                       'left': int(bait_coords[0] - self.bait_window_width / 2),
+                       'width': self.bait_window_width,
+                       'height': self.bait_window_height}
+
+        return bait_window
 
     def set_wow_frame(self, frame):
         self.frame = frame
@@ -184,43 +197,80 @@ class WowFishingBot:
     def get_bait_mask(self, w):
         return self.process_bait(np.array(self.sct.grab(w)))
 
-    @staticmethod
-    def process_bait(img):
-        return utils.binarize_canny(img)
+    def process_bait(self, img):
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (1, 3))
+        #perform canny edge detection
+        r = cv2.Canny(img, self.canny_th1, self.canny_th2)
+        # dilate to make sure the bait is a single connected component
+        r = cv2.morphologyEx(r, cv2.MORPH_DILATE, kernel=(self.dilate_kernelX, self.dilate_kernelY), iterations=self.dilate_iters)
+        # fill the bait if desired
+        if self.flood_image:
+            r = self.img_fill(r)
+        # keep N largest components to keep the bait only
+        r = self.keep_largest_components(r, n=self.num_largest_components)
+
+        return r
+
+    def keep_largest_components(self, img, n=1):
+        new_img = np.zeros_like(img)
+        labels, stats = cv2.connectedComponentsWithStats(img, 4)[1:3]
+        largest_labels = 1 + np.argsort(stats[1:, cv2.CC_STAT_AREA])[::-1][
+                             :(n - 1 if n - 1 < len(labels) else len(labels))]
+        for lab in largest_labels:
+            new_img[labels == lab] = 1
+
+        return new_img
+
+    def img_fill(self, img):
+        # mask for the filling
+        h, w = img.shape[:2]
+        mask = np.zeros((h + 2, w + 2), np.uint8)
+
+        # fill image to get a mask where the gaps we want to fill are the only black areas
+        img_flooded = img.copy()
+        cv2.floodFill(img_flooded, mask, (0, 0), 255)
+        inverse_img_flooded = cv2.bitwise_not(img_flooded)
+
+        # fill gaps with the inverse flooded mask
+        im_out = img | inverse_img_flooded
+
+        return im_out
 
     def display_bait_mask(self, bait_mask):
         self.UI.binary_bait_view.emitter.emit(np.rot90(bait_mask * 255, k=3))
+        app.processEvents()
 
     def display_trigger_signal(self, signals):
         self.UI.slope_signal_viewer.emitter.emit(signals)
+        app.processEvents()
 
     @property
     def grid_travelling_speed(self):
         return float(self.UI.grid_travelling_speed_slider.value())
 
     @property
-    def slope_estimation_samples(self):
-        return float(self.UI.slope_estimation_samples_slider.value())
+    def moving_avg_samples(self):
+        return int(self.UI.moving_avg_samples_spinbox.value())
 
     @property
-    def bait_sensibility(self):
-        return float(self.UI.bait_sensibility_slider.value())
+    def num_std_outlier_detection(self):
+        return float(self.UI.num_std_outlier_detection_spinbox.value())
 
     @property
     def grid_top_padding(self):
-        return float(self.UI.grid_top_padding_slider.value())
+        return float(self.UI.grid_top_padding_slider.value()*0.01)
 
     @property
     def grid_bottom_padding(self):
-        return float(self.UI.grid_bottom_padding_slider.value())
+        return float(self.UI.grid_bottom_padding_slider.value()*0.01)
 
     @property
     def grid_left_padding(self):
-        return float(self.UI.grid_left_padding_slider.value())
+        return float(self.UI.grid_left_padding_slider.value()*0.01)
 
     @property
     def grid_right_padding(self):
-        return float(self.UI.grid_right_padding_slider.value())
+        return float(self.UI.grid_right_padding_slider.value()*0.01)
 
     @property
     def loot_coords_x(self):
@@ -240,11 +290,11 @@ class WowFishingBot:
 
     @property
     def bait_window_width(self):
-        return self.UI.bait_window_width_slider.value()
+        return self.UI.bait_window_width_spinbox.value()
 
     @property
     def bait_window_height(self):
-        return self.UI.bait_window_height_slider.value()
+        return self.UI.bait_window_height_spinbox.value()
 
     @property
     def bait_window_offset_top(self):
@@ -261,6 +311,34 @@ class WowFishingBot:
     @property
     def bait_window_offset_left(self):
         return self.UI.bait_window_offset_left_spinbox.value()
+
+    @property
+    def flood_image(self):
+        return self.UI.flood_fill_checkbox.isChecked()
+
+    @property
+    def canny_th1(self):
+        return int(self.UI.canny_th1_spinbox.value())
+
+    @property
+    def canny_th2(self):
+        return int(self.UI.canny_th2_spinbox.value())
+
+    @property
+    def dilate_kernelX(self):
+        return int(self.UI.dilate_kernelX_spinbox.value())
+
+    @property
+    def dilate_kernelY(self):
+        return int(self.UI.dilate_kernelY_spinbox.value())
+
+    @property
+    def dilate_iters(self):
+        return int(self.UI.dilate_iters_spinbox.value())
+
+    @property
+    def num_largest_components(self):
+        return int(self.UI.n_largest_component_spinbox.value())
 
 
 class QImshow(pg.GraphicsLayoutWidget):
@@ -402,6 +480,12 @@ class QtCache:
     def get_QSpinBox(self, slider):
         return slider.value()
 
+    def fill_QCheckBox(self, box, value):
+        box.setChecked(bool(value))
+
+    def get_QCheckBox(self, box):
+        return box.isChecked()
+
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -411,28 +495,14 @@ class Ui_MainWindow(object):
         self.centralwidget.setObjectName("centralwidget")
         self.start_fishing_button = QtWidgets.QPushButton(self.centralwidget)
         self.start_fishing_button.setEnabled(False)
-        self.start_fishing_button.setGeometry(QtCore.QRect(10, 20, 281, 91))
+        self.start_fishing_button.setGeometry(QtCore.QRect(10, 20, 301, 71))
         font = QtGui.QFont()
         font.setPointSize(30)
         self.start_fishing_button.setFont(font)
         self.start_fishing_button.setObjectName("start_fishing_button")
-        self.horizontalLayoutWidget = QtWidgets.QWidget(self.centralwidget)
-        self.horizontalLayoutWidget.setGeometry(QtCore.QRect(10, 190, 301, 171))
-        self.horizontalLayoutWidget.setObjectName("horizontalLayoutWidget")
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.horizontalLayoutWidget)
-        self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.tries_digital_counter = QtWidgets.QLCDNumber(self.horizontalLayoutWidget)
-        font = QtGui.QFont()
-        font.setPointSize(22)
-        font.setBold(False)
-        font.setWeight(50)
-        self.tries_digital_counter.setFont(font)
-        self.tries_digital_counter.setObjectName("tries_digital_counter")
-        self.horizontalLayout.addWidget(self.tries_digital_counter)
         self.stop_fishing_label = QtWidgets.QLabel(self.centralwidget)
         self.stop_fishing_label.setEnabled(True)
-        self.stop_fishing_label.setGeometry(QtCore.QRect(10, 130, 301, 71))
+        self.stop_fishing_label.setGeometry(QtCore.QRect(10, 110, 301, 71))
         font = QtGui.QFont()
         font.setPointSize(24)
         font.setBold(False)
@@ -441,7 +511,7 @@ class Ui_MainWindow(object):
         self.stop_fishing_label.setFont(font)
         self.stop_fishing_label.setObjectName("stop_fishing_label")
         self.tabWidget = QtWidgets.QTabWidget(self.centralwidget)
-        self.tabWidget.setGeometry(QtCore.QRect(20, 370, 1011, 381))
+        self.tabWidget.setGeometry(QtCore.QRect(20, 320, 1011, 431))
         font = QtGui.QFont()
         font.setPointSize(10)
         self.tabWidget.setFont(font)
@@ -595,62 +665,104 @@ class Ui_MainWindow(object):
         self.tabWidget.addTab(self.find_bait_tab, "")
         self.watch_bait_tab = QtWidgets.QWidget()
         self.watch_bait_tab.setObjectName("watch_bait_tab")
-        self.binary_bait_view = QImshow(self.watch_bait_tab)  # GraphicsLayoutWidget(self.watch_bait_tab)
-        self.binary_bait_view.setGeometry(QtCore.QRect(320, 10, 331, 251))
-        self.binary_bait_view.setObjectName("binary_bait_view")
-        self.slope_signal_viewer = QSignalViewer(2, None, self.watch_bait_tab)  # PlotWidget(self.watch_bait_tab)
-        self.slope_signal_viewer.setGeometry(QtCore.QRect(660, 10, 341, 251))
-        self.slope_signal_viewer.setObjectName("slope_signal_viewer")
-        self.gridLayoutWidget_2 = QtWidgets.QWidget(self.watch_bait_tab)
-        self.gridLayoutWidget_2.setGeometry(QtCore.QRect(10, 10, 301, 191))
-        self.gridLayoutWidget_2.setObjectName("gridLayoutWidget_2")
-        self.gridLayout_2 = QtWidgets.QGridLayout(self.gridLayoutWidget_2)
-        self.gridLayout_2.setContentsMargins(0, 0, 0, 0)
-        self.gridLayout_2.setObjectName("gridLayout_2")
-        self.bait_window_width_slider = QtWidgets.QSlider(self.gridLayoutWidget_2)
-        self.bait_window_width_slider.setMaximum(300)
-        self.bait_window_width_slider.setOrientation(QtCore.Qt.Horizontal)
-        self.bait_window_width_slider.setObjectName("bait_window_width_slider")
-        self.gridLayout_2.addWidget(self.bait_window_width_slider, 5, 0, 1, 1)
-        self.bait_sensibility_slider = QtWidgets.QSlider(self.gridLayoutWidget_2)
-        self.bait_sensibility_slider.setOrientation(QtCore.Qt.Horizontal)
-        self.bait_sensibility_slider.setObjectName("bait_sensibility_slider")
-        self.gridLayout_2.addWidget(self.bait_sensibility_slider, 3, 0, 1, 1)
-        self.slope_estimation_sample_slider_label = QtWidgets.QLabel(self.gridLayoutWidget_2)
-        self.slope_estimation_sample_slider_label.setObjectName("slope_estimation_sample_slider_label")
-        self.gridLayout_2.addWidget(self.slope_estimation_sample_slider_label, 1, 1, 1, 1)
-        self.bait_sensiblity_slider_2 = QtWidgets.QLabel(self.gridLayoutWidget_2)
-        self.bait_sensiblity_slider_2.setObjectName("bait_sensiblity_slider_2")
-        self.gridLayout_2.addWidget(self.bait_sensiblity_slider_2, 3, 1, 1, 1)
-        self.slope_estimation_samples_slider = QtWidgets.QSlider(self.gridLayoutWidget_2)
-        self.slope_estimation_samples_slider.setOrientation(QtCore.Qt.Horizontal)
-        self.slope_estimation_samples_slider.setObjectName("slope_estimation_samples_slider")
-        self.gridLayout_2.addWidget(self.slope_estimation_samples_slider, 1, 0, 1, 1)
-        self.label_11 = QtWidgets.QLabel(self.gridLayoutWidget_2)
-        self.label_11.setObjectName("label_11")
-        self.gridLayout_2.addWidget(self.label_11, 4, 0, 1, 1)
-        self.label_12 = QtWidgets.QLabel(self.gridLayoutWidget_2)
+        self.groupBox_3 = QtWidgets.QGroupBox(self.watch_bait_tab)
+        self.groupBox_3.setGeometry(QtCore.QRect(230, 10, 251, 381))
+        self.groupBox_3.setObjectName("groupBox_3")
+        self.gridLayoutWidget_6 = QtWidgets.QWidget(self.groupBox_3)
+        self.gridLayoutWidget_6.setGeometry(QtCore.QRect(10, 30, 231, 161))
+        self.gridLayoutWidget_6.setObjectName("gridLayoutWidget_6")
+        self.gridLayout_6 = QtWidgets.QGridLayout(self.gridLayoutWidget_6)
+        self.gridLayout_6.setContentsMargins(0, 0, 0, 0)
+        self.gridLayout_6.setObjectName("gridLayout_6")
+        self.label_12 = QtWidgets.QLabel(self.gridLayoutWidget_6)
         self.label_12.setObjectName("label_12")
-        self.gridLayout_2.addWidget(self.label_12, 6, 0, 1, 1)
-        self.label_9 = QtWidgets.QLabel(self.gridLayoutWidget_2)
-        self.label_9.setObjectName("label_9")
-        self.gridLayout_2.addWidget(self.label_9, 2, 0, 1, 1)
-        self.label_8 = QtWidgets.QLabel(self.gridLayoutWidget_2)
+        self.gridLayout_6.addWidget(self.label_12, 3, 0, 1, 1)
+        self.label_8 = QtWidgets.QLabel(self.gridLayoutWidget_6)
         self.label_8.setObjectName("label_8")
-        self.gridLayout_2.addWidget(self.label_8, 0, 0, 1, 1)
-        self.bait_sensiblity_slider_3 = QtWidgets.QLabel(self.gridLayoutWidget_2)
-        self.bait_sensiblity_slider_3.setObjectName("bait_sensiblity_slider_3")
-        self.gridLayout_2.addWidget(self.bait_sensiblity_slider_3, 5, 1, 1, 1)
-        self.bait_window_height_slider = QtWidgets.QSlider(self.gridLayoutWidget_2)
-        self.bait_window_height_slider.setMaximum(300)
-        self.bait_window_height_slider.setOrientation(QtCore.Qt.Horizontal)
-        self.bait_window_height_slider.setObjectName("bait_window_height_slider")
-        self.gridLayout_2.addWidget(self.bait_window_height_slider, 7, 0, 1, 1)
-        self.bait_sensiblity_slider_4 = QtWidgets.QLabel(self.gridLayoutWidget_2)
-        self.bait_sensiblity_slider_4.setObjectName("bait_sensiblity_slider_4")
-        self.gridLayout_2.addWidget(self.bait_sensiblity_slider_4, 7, 1, 1, 1)
-        self.gridLayoutWidget_4 = QtWidgets.QWidget(self.watch_bait_tab)
-        self.gridLayoutWidget_4.setGeometry(QtCore.QRect(10, 240, 178, 97))
+        self.gridLayout_6.addWidget(self.label_8, 0, 0, 1, 1)
+        self.label_9 = QtWidgets.QLabel(self.gridLayoutWidget_6)
+        self.label_9.setObjectName("label_9")
+        self.gridLayout_6.addWidget(self.label_9, 1, 0, 1, 1)
+        self.label_11 = QtWidgets.QLabel(self.gridLayoutWidget_6)
+        self.label_11.setObjectName("label_11")
+        self.gridLayout_6.addWidget(self.label_11, 2, 0, 1, 1)
+        self.moving_avg_samples_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_6)
+        self.moving_avg_samples_spinbox.setMaximum(300)
+        self.moving_avg_samples_spinbox.setObjectName("moving_avg_samples_spinbox")
+        self.gridLayout_6.addWidget(self.moving_avg_samples_spinbox, 0, 1, 1, 1)
+        self.num_std_outlier_detection_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_6)
+        self.num_std_outlier_detection_spinbox.setMaximum(300)
+        self.num_std_outlier_detection_spinbox.setObjectName("num_std_outlier_detection_spinbox")
+        self.gridLayout_6.addWidget(self.num_std_outlier_detection_spinbox, 1, 1, 1, 1)
+        self.bait_window_width_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_6)
+        self.bait_window_width_spinbox.setMaximum(300)
+        self.bait_window_width_spinbox.setObjectName("bait_window_width_spinbox")
+        self.gridLayout_6.addWidget(self.bait_window_width_spinbox, 2, 1, 1, 1)
+        self.bait_window_height_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_6)
+        self.bait_window_height_spinbox.setMaximum(300)
+        self.bait_window_height_spinbox.setObjectName("bait_window_height_spinbox")
+        self.gridLayout_6.addWidget(self.bait_window_height_spinbox, 3, 1, 1, 1)
+        self.groupBox_2 = QtWidgets.QGroupBox(self.watch_bait_tab)
+        self.groupBox_2.setGeometry(QtCore.QRect(10, 10, 211, 381))
+        self.groupBox_2.setFlat(False)
+        self.groupBox_2.setObjectName("groupBox_2")
+        self.gridLayoutWidget_5 = QtWidgets.QWidget(self.groupBox_2)
+        self.gridLayoutWidget_5.setGeometry(QtCore.QRect(10, 30, 181, 201))
+        self.gridLayoutWidget_5.setObjectName("gridLayoutWidget_5")
+        self.gridLayout_5 = QtWidgets.QGridLayout(self.gridLayoutWidget_5)
+        self.gridLayout_5.setContentsMargins(0, 0, 0, 0)
+        self.gridLayout_5.setObjectName("gridLayout_5")
+        self.canny_th1_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_5)
+        self.canny_th1_spinbox.setMaximum(300)
+        self.canny_th1_spinbox.setObjectName("canny_th1_spinbox")
+        self.gridLayout_5.addWidget(self.canny_th1_spinbox, 0, 1, 1, 1)
+        self.dilate_iters_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_5)
+        self.dilate_iters_spinbox.setMaximum(300)
+        self.dilate_iters_spinbox.setObjectName("dilate_iters_spinbox")
+        self.gridLayout_5.addWidget(self.dilate_iters_spinbox, 4, 1, 1, 1)
+        self.label_16 = QtWidgets.QLabel(self.gridLayoutWidget_5)
+        self.label_16.setObjectName("label_16")
+        self.gridLayout_5.addWidget(self.label_16, 2, 0, 1, 1)
+        self.label_19 = QtWidgets.QLabel(self.gridLayoutWidget_5)
+        self.label_19.setObjectName("label_19")
+        self.gridLayout_5.addWidget(self.label_19, 6, 0, 1, 1)
+        self.dilate_kernelX_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_5)
+        self.dilate_kernelX_spinbox.setMaximum(300)
+        self.dilate_kernelX_spinbox.setObjectName("dilate_kernelX_spinbox")
+        self.gridLayout_5.addWidget(self.dilate_kernelX_spinbox, 2, 1, 1, 1)
+        self.flood_fill_checkbox = QtWidgets.QCheckBox(self.gridLayoutWidget_5)
+        self.flood_fill_checkbox.setText("")
+        self.flood_fill_checkbox.setObjectName("flood_fill_checkbox")
+        self.gridLayout_5.addWidget(self.flood_fill_checkbox, 6, 1, 1, 1, QtCore.Qt.AlignHCenter)
+        self.label_18 = QtWidgets.QLabel(self.gridLayoutWidget_5)
+        self.label_18.setObjectName("label_18")
+        self.gridLayout_5.addWidget(self.label_18, 5, 0, 1, 1)
+        self.label_17 = QtWidgets.QLabel(self.gridLayoutWidget_5)
+        self.label_17.setObjectName("label_17")
+        self.gridLayout_5.addWidget(self.label_17, 4, 0, 1, 1)
+        self.label_15 = QtWidgets.QLabel(self.gridLayoutWidget_5)
+        self.label_15.setObjectName("label_15")
+        self.gridLayout_5.addWidget(self.label_15, 1, 0, 1, 1)
+        self.label_14 = QtWidgets.QLabel(self.gridLayoutWidget_5)
+        self.label_14.setObjectName("label_14")
+        self.gridLayout_5.addWidget(self.label_14, 0, 0, 1, 1)
+        self.canny_th2_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_5)
+        self.canny_th2_spinbox.setMaximum(300)
+        self.canny_th2_spinbox.setObjectName("canny_th2_spinbox")
+        self.gridLayout_5.addWidget(self.canny_th2_spinbox, 1, 1, 1, 1)
+        self.n_largest_component_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_5)
+        self.n_largest_component_spinbox.setMaximum(300)
+        self.n_largest_component_spinbox.setObjectName("n_largest_component_spinbox")
+        self.gridLayout_5.addWidget(self.n_largest_component_spinbox, 5, 1, 1, 1)
+        self.label_20 = QtWidgets.QLabel(self.gridLayoutWidget_5)
+        self.label_20.setObjectName("label_20")
+        self.gridLayout_5.addWidget(self.label_20, 3, 0, 1, 1)
+        self.dilate_kernelY_spinbox = QtWidgets.QSpinBox(self.gridLayoutWidget_5)
+        self.dilate_kernelY_spinbox.setMaximum(300)
+        self.dilate_kernelY_spinbox.setObjectName("dilate_kernelY_spinbox")
+        self.gridLayout_5.addWidget(self.dilate_kernelY_spinbox, 3, 1, 1, 1)
+        self.gridLayoutWidget_4 = QtWidgets.QWidget(self.groupBox_2)
+        self.gridLayoutWidget_4.setGeometry(QtCore.QRect(10, 280, 178, 97))
         self.gridLayoutWidget_4.setObjectName("gridLayoutWidget_4")
         self.gridLayout_4 = QtWidgets.QGridLayout(self.gridLayoutWidget_4)
         self.gridLayout_4.setContentsMargins(0, 0, 0, 0)
@@ -674,9 +786,15 @@ class Ui_MainWindow(object):
         self.bait_window_offset_bottom_spinbox.setMaximum(300)
         self.bait_window_offset_bottom_spinbox.setObjectName("bait_window_offset_bottom_spinbox")
         self.gridLayout_4.addWidget(self.bait_window_offset_bottom_spinbox, 2, 1, 1, 1)
-        self.label_13 = QtWidgets.QLabel(self.watch_bait_tab)
-        self.label_13.setGeometry(QtCore.QRect(10, 200, 137, 37))
+        self.label_13 = QtWidgets.QLabel(self.groupBox_2)
+        self.label_13.setGeometry(QtCore.QRect(10, 240, 137, 37))
         self.label_13.setObjectName("label_13")
+        self.binary_bait_view = QImshow(self.watch_bait_tab)  # GraphicsLayoutWidget(self.watch_bait_tab)
+        self.binary_bait_view.setGeometry(QtCore.QRect(490, 20, 251, 191))
+        self.binary_bait_view.setObjectName("binary_bait_view")
+        self.slope_signal_viewer = QSignalViewer(2, None, self.watch_bait_tab)  # PlotWidget(self.watch_bait_tab)
+        self.slope_signal_viewer.setGeometry(QtCore.QRect(750, 20, 251, 191))
+        self.slope_signal_viewer.setObjectName("slope_signal_viewer")
         self.tabWidget.addTab(self.watch_bait_tab, "")
         self.loot_fish_tab = QtWidgets.QWidget()
         self.loot_fish_tab.setObjectName("loot_fish_tab")
@@ -719,19 +837,28 @@ class Ui_MainWindow(object):
         self.label = QtWidgets.QLabel(self.formLayoutWidget_2)
         self.label.setObjectName("label")
         self.formLayout_2.setWidget(0, QtWidgets.QFormLayout.LabelRole, self.label)
-        self.fishing_wait_time_edit = QtWidgets.QLineEdit(self.formLayoutWidget_2)
-        self.fishing_wait_time_edit.setObjectName("fishing_wait_time_edit")
-        self.formLayout_2.setWidget(0, QtWidgets.QFormLayout.FieldRole, self.fishing_wait_time_edit)
         self.label_2 = QtWidgets.QLabel(self.formLayoutWidget_2)
         self.label_2.setObjectName("label_2")
         self.formLayout_2.setWidget(1, QtWidgets.QFormLayout.LabelRole, self.label_2)
         self.fishing_hotkey_edit = QtWidgets.QLineEdit(self.formLayoutWidget_2)
         self.fishing_hotkey_edit.setObjectName("fishing_hotkey_edit")
         self.formLayout_2.setWidget(1, QtWidgets.QFormLayout.FieldRole, self.fishing_hotkey_edit)
+        self.fishing_wait_time_spinbox = QtWidgets.QSpinBox(self.formLayoutWidget_2)
+        self.fishing_wait_time_spinbox.setMaximum(300)
+        self.fishing_wait_time_spinbox.setObjectName("fishing_wait_time_spinbox")
+        self.formLayout_2.setWidget(0, QtWidgets.QFormLayout.FieldRole, self.fishing_wait_time_spinbox)
         self.tabWidget.addTab(self.tab, "")
         self.log_viewer = Log(self.centralwidget)  # QtWidgets.QPlainTextEdit(self.centralwidget)
-        self.log_viewer.setGeometry(QtCore.QRect(320, 20, 711, 341))
+        self.log_viewer.setGeometry(QtCore.QRect(320, 20, 711, 291))
         self.log_viewer.setObjectName("log_viewer")
+        self.tries_digital_counter = QtWidgets.QLCDNumber(self.centralwidget)
+        self.tries_digital_counter.setGeometry(QtCore.QRect(10, 198, 301, 111))
+        font = QtGui.QFont()
+        font.setPointSize(22)
+        font.setBold(False)
+        font.setWeight(50)
+        self.tries_digital_counter.setFont(font)
+        self.tries_digital_counter.setObjectName("tries_digital_counter")
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 1054, 26))
@@ -776,12 +903,8 @@ class Ui_MainWindow(object):
         self.grid_right_padding_slider.valueChanged['int'].connect(self.grid_travelling_speed_slider_label.setNum)
         self.grid_bottom_padding_slider.valueChanged['int'].connect(self.grid_travelling_speed_slider_label_4.setNum)
         self.grid_top_padding_slider.valueChanged['int'].connect(self.grid_travelling_speed_slider_label_3.setNum)
-        self.slope_estimation_samples_slider.valueChanged['int'].connect(self.slope_estimation_sample_slider_label.setNum)
-        self.bait_sensibility_slider.valueChanged['int'].connect(self.bait_sensiblity_slider_2.setNum)
         self.grid_travelling_speed_slider.valueChanged['int'].connect(self.label99_6.setNum)
         self.grid_travelling_speed_slider_2.valueChanged['int'].connect(self.label99_8.setNum)
-        self.bait_window_width_slider.valueChanged['int'].connect(self.bait_sensiblity_slider_3.setNum)
-        self.bait_window_height_slider.valueChanged['int'].connect(self.bait_sensiblity_slider_4.setNum)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -808,14 +931,19 @@ class Ui_MainWindow(object):
         self.label99_7.setText(_translate("MainWindow", "grid step"))
         self.label99_8.setText(_translate("MainWindow", "0"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.find_bait_tab), _translate("MainWindow", "Find bait"))
-        self.slope_estimation_sample_slider_label.setText(_translate("MainWindow", "0"))
-        self.bait_sensiblity_slider_2.setText(_translate("MainWindow", "0"))
-        self.label_11.setText(_translate("MainWindow", "Bait window width"))
+        self.groupBox_3.setTitle(_translate("MainWindow", "signal processing"))
         self.label_12.setText(_translate("MainWindow", "Bait window height"))
-        self.label_9.setText(_translate("MainWindow", "Bait movement sensibility"))
-        self.label_8.setText(_translate("MainWindow", "Slope estimation samples"))
-        self.bait_sensiblity_slider_3.setText(_translate("MainWindow", "0"))
-        self.bait_sensiblity_slider_4.setText(_translate("MainWindow", "0"))
+        self.label_8.setText(_translate("MainWindow", "Moving avg. samples"))
+        self.label_9.setText(_translate("MainWindow", "N std outlier detection"))
+        self.label_11.setText(_translate("MainWindow", "Bait window width"))
+        self.groupBox_2.setTitle(_translate("MainWindow", "image processing"))
+        self.label_16.setText(_translate("MainWindow", "Dilate kernel X"))
+        self.label_19.setText(_translate("MainWindow", "Flood fill"))
+        self.label_18.setText(_translate("MainWindow", "N largest comp."))
+        self.label_17.setText(_translate("MainWindow", "Dilate iters."))
+        self.label_15.setText(_translate("MainWindow", "Canny th. 2"))
+        self.label_14.setText(_translate("MainWindow", "Canny th. 1"))
+        self.label_20.setText(_translate("MainWindow", "Dilate kernel Y"))
         self.label_5.setText(_translate("MainWindow", "+"))
         self.label_13.setText(_translate("MainWindow", "bait window offset"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.watch_bait_tab), _translate("MainWindow", "Watch bait"))
@@ -894,7 +1022,7 @@ class Ui_MainWindow(object):
     def _fish(self):
         # give user time to place mouse on WOW's window
         self.log_viewer.emitter.emit("Place the cursor inside the WOW window")
-        for i in reversed(range(int(self.fishing_wait_time_edit.text()))):
+        for i in reversed(range(int(self.fishing_wait_time_spinbox.value()))):
             time.sleep(1)
             self.log_viewer.emitter.emit("Fishing will start in {} ...".format(i))
             app.processEvents()
@@ -931,6 +1059,9 @@ if __name__ == "__main__":
     MainWindow.closeEvent = ui.save_cache
     # pass UI to bot
     bot = WowFishingBot(ui)
+    # try to detect WOW on startup
+    ui.find_wow()
+
 
     MainWindow.show()
     sys.exit(app.exec_())
